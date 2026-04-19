@@ -39,8 +39,16 @@ export async function generateAudio(
   }
 
   const audioBuffer = await response.arrayBuffer()
-  const pathname = `briefings/${userId}/${date}.mp3`
 
+  // When Vercel Blob is not configured (local dev), return a base64 data URL
+  // so the audio player can still function without cloud storage.
+  if (!process.env.BLOB_READ_WRITE_TOKEN) {
+    console.warn('[TTS] BLOB_READ_WRITE_TOKEN not set — returning base64 data URL')
+    const base64 = Buffer.from(audioBuffer).toString('base64')
+    return `data:audio/mpeg;base64,${base64}`
+  }
+
+  const pathname = `briefings/${userId}/${date}.mp3`
   const blob = await put(pathname, audioBuffer, {
     access: 'public',
     contentType: 'audio/mpeg',

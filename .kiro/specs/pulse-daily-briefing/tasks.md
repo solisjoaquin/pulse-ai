@@ -566,6 +566,496 @@ Show friendly error messages when generation fails.
 
 ---
 
+## Phase 8 — Team Data Models
+
+- [x] TASK-024 — Add team TypeScript types
+**Refs:** REQ-003, REQ-004, REQ-006, REQ-007
+**File:** `types/index.ts`
+**Description:**
+Extend `types/index.ts` with all new team-related interfaces:
+- `Team`
+- `TeamMember`
+- `MemberActivity`
+- `Overlap`
+- `TeamAlert`
+
+Update `DailyBriefing` to include `relevantOverlaps: Overlap[]`.
+Update `BriefingContent` to include `teamAlerts: TeamAlert[]`.
+Update `GitHubActivity` to include `modifiedFiles: string[]`.
+
+**Definition of done:**
+- All new interfaces exported from `types/index.ts`
+- Existing interfaces updated without breaking changes
+- No TypeScript errors across the project
+
+---
+
+## Phase 9 — Team Management
+
+- [x] TASK-025 — POST /api/team/create
+**Refs:** REQ-003
+**File:** `app/api/team/create/route.ts`
+**Description:**
+Create a new Team in Vercel KV.
+
+**Must:**
+- Require a valid session
+- Accept `{ name: string }` in the request body
+- Generate a unique `teamId` (UUID)
+- Generate a unique `inviteToken`
+- Set `inviteExpiresAt` to 72 hours from now
+- Store the Team object under key `team:{teamId}`
+- Add the creating user as the first member in `memberIds`
+- Return the created Team including the invite link
+
+**Definition of done:**
+- Team is persisted in KV and retrievable by ID
+- Invite token is unique and expires correctly
+- Creating user is included as first member
+
+---
+
+- [x] TASK-026 — POST /api/team/join
+**Refs:** REQ-003
+**File:** `app/api/team/join/route.ts`
+**Description:**
+Allow a user to join a team via invite link.
+
+**Must:**
+- Accept `{ inviteToken: string }` in the request body
+- Look up the Team by `inviteToken`
+- Reject if token is expired or not found (return 400)
+- Reject if team already has 25 members (return 400)
+- Add the joining user to `memberIds`
+- Update the Team record in KV
+- Return the Team object
+
+**Definition of done:**
+- User is added to the team on valid token
+- Expired tokens are rejected with a clear error
+- Team size limit of 25 is enforced
+
+---
+
+- [x] TASK-027 — Onboarding team step
+**Refs:** REQ-003
+**Files:**
+- `app/onboarding/team/page.tsx`
+- `app/onboarding/sources/page.tsx`
+
+**Description:**
+Add a team step to the onboarding flow that appears after the user connects their data sources.
+
+**Team step must:**
+- Offer two options: "Create a team" and "Join a team"
+- Create flow: text input for team name, calls `POST /api/team/create`, displays the generated invite link
+- Join flow: text input for invite link/token, calls `POST /api/team/join`
+- On success: redirect to `/dashboard`
+
+**Definition of done:**
+- User cannot reach the dashboard without completing the team step
+- Both create and join paths work end-to-end
+- Invite link is displayed clearly and copyable after team creation
+
+---
+
+## Phase 10 — Team Activity Aggregation
+
+- [x] TASK-028 — Team activity cache layer
+**Refs:** REQ-006
+**File:** `lib/cache/team.ts`
+**Description:**
+Implement KV read/write functions for team activity data:
+
+```typescript
+export async function getMemberActivity(
+  teamId: string,
+  userId: string,
+  date: string
+): Promise<MemberActivity | null>
+
+export async function cacheMemberActivity(
+  teamId: string,
+  activity: MemberActivity
+): Promise<void>
+
+export async function getAllMemberActivity(
+  teamId: string,
+  date: string
+): Promise<MemberActivity[]>
+
+export async function getCachedOverlaps(
+  teamId: string,
+  date: string
+): Promise<Overlap[] | null>
+
+export async function cacheOverlaps(
+  teamId: string,
+  date: string,
+  overlaps: Overlap[]
+): Promise<void>
+```
+
+**Cache key formats:**
+- `activity:{teamId}:{userId}:{YYYY-MM-DD}` — TTL 24 hours
+- `overlaps:{teamId}:{YYYY-MM-DD}` — TTL 24 hours
+
+**Definition of done:**
+- All functions implemented and typed
+- TTL applied correctly on write
+- `getAllMemberActivity` returns only records for the given team and date
+
+---
+
+- [x] TASK-029 — lib/team/aggregate.ts
+**Refs:** REQ-006
+**File:** `lib/team/aggregate.ts`
+**Description:**
+Implement `aggregateTeamActivity(teamId: string, date: string): Promise<MemberActivity[]>`
+
+**Must:**
+- Load all TeamMember records for the team from KV
+- Fetch each member's GitHub, Google, and Jira activity in parallel using `Promise.allSettled`
+- For each member, derive `touchedRepos`, `touchedPaths`, and `touchedEpics` from raw activity
+- Call Gemini to generate a `focusSummary` string for each member (1 sentence)
+- Store each `MemberActivity` in KV via `cacheMemberActivity`
+- Return the full array of `MemberActivity`
+
+**Error handling:**
+- If a member's source fetch fails, store `null` for that source — never skip the member
+- If Gemini focus summary fails, use a fallback: "Activity data available but summary unavailable"
+
+**Definition of done:**
+- Returns typed `MemberActivity[]` for all team members
+- All fetches run in parallel
+- Results cached in KV before returning
+
+---
+
+- [x] TASK-030 — POST /api/team/activity
+**Refs:** REQ-006
+**File:** `app/api/team/activity/route.ts`
+**Description:**
+API route called by the Vercel cron job every hour.
+
+**Must:**
+- Identify all active teams (or accept `teamId` as a query param for targeted refresh)
+- Call `aggregateTeamActivity` for each team
+- Return `{ status: 'ok', membersUpdated: number }`
+
+**Definition of done:**
+- Route callable by Vercel cron without user session
+- Uses a shared cron secret (`CRON_SECRET` env var) for auth
+- Handles partial failures per team gracefully
+
+---
+
+## Phase 11 — Overlap Detection
+
+- [x] TASK-031 — lib/team/overlaps.ts — structural detection
+**Refs:** REQ-007
+**File:** `lib/team/overlaps.ts`
+**Description:**
+Implement `detectStructuralOverlaps(activities: MemberActivity[]): Overlap[]`
+
+**Pass 1 — Structural (no AI):**
+- CONFLICT: same file path appears in two members' `modifiedFiles` AND both members have open pull requests
+- AWARENESS (repo): same repo name appears in two members' `touchedRepos`
+- AWARENESS (path): same directory prefix appears in two members' `touchedPaths`
+
+**Each Overlap must include:**
+- Unique `id` (UUID)
+- `type`: `'conflict' | 'awareness'`
+- `memberIds`: the two affected members
+- `reason`: human-readable string (e.g., "Both modifying src/lib/auth/")
+- `repos` and `paths` arrays
+- `detectedAt`: ISO timestamp
+
+**Definition of done:**
+- Returns correctly typed `Overlap[]`
+- No false positives for unrelated repos/paths
+- Handles edge case of single-member team (returns empty array)
+
+---
+
+- [x] TASK-032 — lib/ai/analyzeOverlaps.ts — semantic detection
+**Refs:** REQ-007
+**File:** `lib/ai/analyzeOverlaps.ts`
+**Description:**
+Implement `analyzeSemanticOverlaps(activities: MemberActivity[]): Promise<Overlap[]>`
+
+**Must:**
+- Build a prompt from each member's `focusSummary`, pull request titles, and Jira ticket titles
+- Send to gemini API using the overlap analysis prompt from `prompts.ts`
+- Parse the JSON response into `Overlap[]` with `type: 'synergy'`
+- Be conservative — only flag genuine semantic overlaps
+
+**Error handling:**
+- If gemini returns malformed JSON, log the error and return `[]`
+- Never throw — return empty array on any failure
+
+**Definition of done:**
+- Returns `Overlap[]` with `type: 'synergy'` for semantically similar work
+- Handles gemini API errors gracefully
+- Prompt is sourced from `lib/ai/prompts.ts`
+
+---
+
+- [x] TASK-033 — POST /api/team/overlaps
+**Refs:** REQ-007
+**File:** `app/api/team/overlaps/route.ts`
+**Description:**
+Compute and cache overlaps for a team.
+
+**Must:**
+- Load today's `MemberActivity[]` from KV via `getAllMemberActivity`
+- Run `detectStructuralOverlaps` (Pass 1)
+- Run `analyzeSemanticOverlaps` (Pass 2)
+- Merge results, deduplicate by member pair + type
+- Store combined `Overlap[]` in KV via `cacheOverlaps`
+- Return `{ overlaps: Overlap[] }`
+
+**Definition of done:**
+- Returns merged structural + semantic overlaps
+- Deduplication prevents the same pair appearing twice with the same type
+- Results cached in KV
+
+---
+
+## Phase 12 — gemini API Integration
+
+
+- [x] TASK-035 — Update prompts.ts for gemini and team context
+**Refs:** REQ-008, REQ-007
+**File:** `lib/ai/prompts.ts`
+**Description:**
+Update all prompts to work with gemini and include team context.
+
+**Must update `buildBriefingPrompt` to:**
+- Accept `teamAlerts: TeamAlert[]` as a parameter
+- Include team alerts section in the prompt
+- Update word limit instruction to 400 words
+- Keep all existing voice/TTS formatting rules
+
+**Must add `buildOverlapAnalysisPrompt`:**
+- Accepts `summaries: { userId: string; focusSummary: string; prTitles: string[]; ticketTitles: string[] }[]`
+- Returns the overlap analysis prompt string
+- Instructs gemini to return only valid JSON
+
+**Must add `buildFocusSummaryPrompt`:**
+- Accepts a single member's raw activity
+- Returns a prompt that asks gemini for a 1-sentence focus summary
+
+**Definition of done:**
+- All three prompt builder functions exported
+- Prompts tested manually against gemini API
+- No hardcoded member data in prompt strings
+
+---
+
+## Phase 13 — Updated Briefing Pipeline
+
+- [x] TASK-036 — Update /api/briefing/generate with team overlaps
+**Refs:** REQ-008, REQ-007
+**File:** `app/api/briefing/generate/route.ts`
+**Description:**
+Update the briefing generation pipeline to include team overlap data.
+
+**Updated pipeline:**
+```
+1. Authenticate request (valid session required)
+2. Check cache — return existing briefing if found
+3. Fetch user's MemberActivity from KV (or generate if missing)
+4. Fetch team Overlap[] from KV, filter to overlaps involving this user
+5. Convert relevant Overlaps to TeamAlert[] for the briefing prompt
+6. Fetch all sources in parallel with Promise.allSettled
+7. Call synthesizeBriefing with activity data + TeamAlert[]
+8. Call generateAudio with briefing text
+9. Build DailyBriefing with relevantOverlaps populated
+10. Cache the briefing
+11. Return briefing as JSON
+```
+
+**Definition of done:**
+- Returns `DailyBriefing` with `relevantOverlaps` populated
+- Team alerts appear in the briefing content
+- Existing caching behavior preserved
+
+---
+
+## Phase 14 — Team Dashboard UI
+
+- [x] TASK-037 — MemberCard component
+**Refs:** REQ-012
+**File:** `components/team/MemberCard.tsx`
+**Description:**
+Display one team member's current focus.
+
+**Props:** `{ member: TeamMember; activity: MemberActivity | null }`
+
+**Must show:**
+- Member avatar and name
+- `focusSummary` text (or "No recent activity" if activity is null)
+- Connection status dots (GitHub, Google, Jira)
+- Last updated timestamp
+
+**Privacy rule:** Never display raw file paths, commit messages, or ticket IDs.
+
+**Definition of done:**
+- Renders correctly for active and inactive members
+- "No recent activity" shown without negative framing
+- Touch-friendly on mobile
+
+---
+
+- [x] TASK-038 — OverlapAlert component
+**Refs:** REQ-007, REQ-012
+**File:** `components/team/OverlapAlert.tsx`
+**Description:**
+Display a single overlap card in the team dashboard.
+
+**Props:** `{ overlap: Overlap; members: TeamMember[] }`
+
+**Must show:**
+- Overlap type badge: CONFLICT (red), SYNERGY (blue), AWARENESS (yellow)
+- Member names involved
+- `reason` text
+- For CONFLICT: prominent warning styling
+- For SYNERGY: suggestion to sync
+
+**Definition of done:**
+- Three visual variants render correctly
+- CONFLICT variant is visually distinct and prominent
+- No raw file paths shown (use `reason` field only)
+
+---
+
+- [x] TASK-039 — TeamFeed component
+**Refs:** REQ-012
+**File:** `components/team/TeamFeed.tsx`
+**Description:**
+Display all team members' activity in a scrollable feed.
+
+**Props:** `{ members: TeamMember[]; activities: MemberActivity[] }`
+
+**Must:**
+- Render one `MemberCard` per team member
+- Sort: members with recent activity first, inactive members last
+- Show a loading skeleton while data is fetching
+
+**Definition of done:**
+- All team members rendered
+- Sort order correct
+- Loading state handled
+
+---
+
+- [x] TASK-040 — TeamTimeline component
+**Refs:** REQ-012
+**File:** `components/team/TeamTimeline.tsx`
+**Description:**
+Display a shared timeline of today's team meetings.
+
+**Props:** `{ activities: MemberActivity[] }`
+
+**Must:**
+- Aggregate all `CalendarEvent[]` from all members' Google activity
+- Deduplicate events that appear on multiple members' calendars (match by title + start time)
+- Display events in chronological order with time and title
+- Show attendee count (not names)
+
+**Definition of done:**
+- Shared meetings shown once even if multiple members have them
+- Events sorted chronologically
+- Empty state shown if no calendar data is available
+
+---
+
+- [x] TASK-041 — Team dashboard page
+**Refs:** REQ-012
+**File:** `app/dashboard/team/page.tsx`
+**Description:**
+Build the team intelligence view.
+
+**Layout:**
+1. **Overlaps section:** Active overlaps grouped by type (CONFLICT first, then SYNERGY, then AWARENESS), rendered as `OverlapAlert` cards
+2. **Team feed:** `TeamFeed` component with all member cards
+3. **Timeline:** `TeamTimeline` component
+
+**On load:**
+- Fetch team members from KV
+- Fetch today's `MemberActivity[]` for all members
+- Fetch today's `Overlap[]` for the team
+
+**Definition of done:**
+- All three sections render with real data
+- CONFLICT overlaps appear at the top
+- Page is mobile-responsive
+
+---
+
+## Phase 15 — Updated Voice Assistant
+
+- [x] TASK-042 — Update /api/assistant/session with team context
+**Refs:** REQ-011
+**File:** `app/api/assistant/session/route.ts`
+**Description:**
+Update the assistant session to include full team context.
+
+**Updated context loading:**
+```
+1. Load user's DailyBriefing from KV
+2. Load all MemberActivity[] for the team (focusSummary only)
+3. Load all Overlap[] for the team today
+4. Build system prompt with all three context sections
+5. Initialize ElevenLabs Conversational AI session
+6. Return session token to client
+```
+
+**System prompt sections:**
+- `== YOUR USER ==` — full briefing content
+- `== TEAM ACTIVITY TODAY ==` — one line per member: "Name: focusSummary"
+- `== ACTIVE OVERLAPS ==` — overlap reason strings
+
+**Privacy rule in prompt:** Never reveal raw file paths, commit SHAs, or ticket IDs of other members.
+
+**Definition of done:**
+- Session context includes all three sections
+- Agent can answer questions about teammates using focusSummary data
+- Privacy rules enforced in the system prompt
+
+---
+
+## Phase 16 — Vercel Cron Configuration
+
+- [x] TASK-043 — vercel.json cron configuration
+**Refs:** REQ-006
+**File:** `vercel.json`
+**Description:**
+Add Vercel cron configuration to trigger team activity aggregation every hour on weekdays.
+
+**`vercel.json` content:**
+```json
+{
+  "crons": [{
+    "path": "/api/team/activity",
+    "schedule": "0 6-22 * * 1-5"
+  }]
+}
+```
+
+**Must also:**
+- Add `CRON_SECRET` to `.env.local` and document it in the env vars summary below
+- Update `/api/team/activity` to validate the `Authorization: Bearer {CRON_SECRET}` header
+- Reject requests without a valid cron secret with 401
+
+**Definition of done:**
+- `vercel.json` exists with correct cron schedule
+- `/api/team/activity` rejects unauthorized requests
+- Cron runs hourly on weekdays 6am–10pm UTC
+
+---
+
 ## Environment Variables Summary
 
 ```
@@ -588,6 +1078,9 @@ ELEVENLABS_VOICE_ID=
 KV_REST_API_URL=
 KV_REST_API_TOKEN=
 BLOB_READ_WRITE_TOKEN=
+
+# Cron
+CRON_SECRET=
 
 # Demo
 DEMO_MODE=false

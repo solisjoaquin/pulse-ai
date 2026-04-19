@@ -1,3 +1,57 @@
+// ─── Team Types ───────────────────────────────────────────────────────────────
+
+export interface Team {
+  id: string
+  name: string
+  memberIds: string[]
+  inviteToken: string
+  inviteExpiresAt: string // ISO 8601 — 72 hours from creation
+  createdAt: string
+}
+
+export interface TeamMember {
+  userId: string
+  teamId: string
+  name: string
+  avatarUrl: string
+  timezone: string
+  briefingTime: string // HH:MM
+  connections: {
+    github: boolean
+    google: boolean
+    jira: boolean
+  }
+}
+
+export interface MemberActivity {
+  userId: string
+  date: string // YYYY-MM-DD
+  github: GitHubActivity | null
+  google: GoogleActivity | null
+  jira: JiraActivity | null
+  focusSummary: string // Claude-derived: "Working on auth refactor and caching layer"
+  touchedRepos: string[] // ["pulse-app", "pulse-infra"]
+  touchedPaths: string[] // ["src/lib/auth/", "src/components/"]
+  touchedEpics: string[] // ["AUTH-2024", "PERF-89"]
+}
+
+export interface Overlap {
+  id: string
+  type: 'conflict' | 'synergy' | 'awareness'
+  memberIds: [string, string]
+  reason: string // Human-readable: "Both modifying src/lib/auth/"
+  detail: string // More context for the assistant
+  repos: string[]
+  paths: string[]
+  detectedAt: string // ISO 8601
+}
+
+export interface TeamAlert {
+  type: 'conflict' | 'synergy' | 'awareness'
+  message: string // Spoken-friendly alert text
+  withMember: string // First name only: "Ana"
+}
+
 // ─── Core Briefing Types ──────────────────────────────────────────────────────
 
 export interface DailyBriefing {
@@ -12,6 +66,7 @@ export interface DailyBriefing {
   }
   content: BriefingContent | null
   audioUrl: string | null
+  relevantOverlaps: Overlap[] // Only overlaps involving this user
   generatedAt: string | null
 }
 
@@ -21,6 +76,7 @@ export interface BriefingContent {
   pending: PendingItem[] // Open PRs, tickets, tasks
   blockers: BlockerItem[] // Ordered by urgency
   todaySchedule: CalendarEvent[] // Today's meetings
+  teamAlerts: TeamAlert[] // Overlap-derived alerts for this user
   wordCount: number
 }
 
@@ -49,6 +105,7 @@ export interface GitHubActivity {
   pendingReviews: PullRequest[]
   closedIssues: Issue[]
   mergedPRs: PullRequest[]
+  modifiedFiles: string[] // All unique file paths touched in the last 24 hours
 }
 
 export interface Commit {

@@ -3,19 +3,55 @@
 @tailwind utilities;
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+  /* Brand */
+  --pulse-green: #1D9E75;
+  --pulse-green-dark: #0F6E56;
+  --pulse-green-light: #E1F5EE;
+  --pulse-green-mid: #5DCAA5;
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  /* Text */
+  --color-text-primary: #111827;
+  --color-text-secondary: #6B7280;
+  --color-text-tertiary: #9CA3AF;
+  --color-text-info: #1D4ED8;
+
+  /* Backgrounds */
+  --color-background-primary: #FFFFFF;
+  --color-background-secondary: #F9FAFB;
+  --color-background-tertiary: #F3F4F6;
+  --color-background-info: #EFF6FF;
+
+  /* Borders */
+  --color-border-primary: #D1D5DB;
+  --color-border-secondary: #E5E7EB;
+  --color-border-tertiary: #F3F4F6;
+
+  /* Radius */
+  --border-radius-sm: 6px;
+  --border-radius-md: 8px;
+  --border-radius-lg: 14px;
+
+  /* Legacy */
+  --background: #ffffff;
+  --foreground: #111827;
 }
 
 body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  color: var(--color-text-primary);
+  background: var(--color-background-secondary);
+  font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.spinner {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid var(--color-border-primary);
+  border-top-color: var(--pulse-green);
+  animation: spin 0.8s linear infinite;
 }

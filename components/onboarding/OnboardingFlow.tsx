@@ -5,7 +5,14 @@ import { useSession, signIn, signOut } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import SourceCard from './SourceCard'
 
-export default function OnboardingFlow(): React.ReactElement {
+interface OnboardingFlowProps {
+  /** Where to redirect after at least one source is connected. Defaults to '/dashboard'. */
+  redirectTo?: string
+}
+
+export default function OnboardingFlow({
+  redirectTo = '/dashboard',
+}: OnboardingFlowProps): React.ReactElement {
   const { data: session } = useSession()
   const router = useRouter()
   const [showError, setShowError] = useState(false)
@@ -19,7 +26,7 @@ export default function OnboardingFlow(): React.ReactElement {
       setShowError(true)
       return
     }
-    router.push('/dashboard')
+    router.push(redirectTo)
   }
 
   function handleConnect(provider: 'github' | 'google'): void {
@@ -73,7 +80,7 @@ export default function OnboardingFlow(): React.ReactElement {
         disabled={!hasAtLeastOne}
         className="mt-2 min-h-[44px] w-full rounded-xl bg-gray-900 px-6 py-3 text-base font-semibold text-white transition-colors hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-40"
       >
-        Continue to Dashboard
+        Continue
       </button>
     </div>
   )

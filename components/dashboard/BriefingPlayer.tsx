@@ -5,9 +5,16 @@ import { useRef, useState, useEffect } from 'react'
 interface BriefingPlayerProps {
   audioUrl: string
   transcript: string
+  briefing?: {
+    summary: string
+    achievements: string[]
+    pending: { id: string; title: string }[]
+    blockers: { id: string; title: string; description?: string }[]
+    todaySchedule: { id: string; title: string; start: string; end: string; attendees: number; isVideo: boolean }[]
+  }
 }
 
-export default function BriefingPlayer({ audioUrl, transcript }: BriefingPlayerProps) {
+export default function BriefingPlayer({ audioUrl, transcript, briefing }: BriefingPlayerProps) {
   const audioRef = useRef<HTMLAudioElement>(null)
   const [isPlaying, setIsPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
@@ -45,6 +52,12 @@ export default function BriefingPlayer({ audioUrl, transcript }: BriefingPlayerP
     setIsPlaying(!isPlaying)
   }
 
+  function seek(delta: number): void {
+    const audio = audioRef.current
+    if (!audio) return
+    audio.currentTime = Math.max(0, Math.min(audio.duration, audio.currentTime + delta))
+  }
+
   function handleSeek(e: React.ChangeEvent<HTMLInputElement>): void {
     const audio = audioRef.current
     if (!audio) return
@@ -61,70 +74,197 @@ export default function BriefingPlayer({ audioUrl, transcript }: BriefingPlayerP
   }
 
   function formatTime(seconds: number): string {
+    if (!isFinite(seconds)) return '0:00'
     const mins = Math.floor(seconds / 60)
     const secs = Math.floor(seconds % 60)
     return `${mins}:${secs.toString().padStart(2, '0')}`
   }
 
+  const durationLabel = duration > 0
+    ? `${Math.floor(duration / 60)} min ${Math.floor(duration % 60)} sec`
+    : '—'
+
   return (
-    <div className="w-full rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+    <div
+      style={{
+        background: 'var(--color-background-primary)',
+        border: '0.5px solid var(--color-border-tertiary)',
+        borderRadius: 'var(--border-radius-lg)',
+        padding: '1.75rem',
+      }}
+    >
       <audio ref={audioRef} src={audioUrl} preload="metadata" />
 
-      {/* Play/Pause + Progress */}
-      <div className="flex items-center gap-4">
+      {/* Label */}
+      <p
+        style={{
+          fontSize: '11px',
+          fontWeight: 500,
+          textTransform: 'uppercase',
+          letterSpacing: '0.08em',
+          color: 'var(--color-text-tertiary)',
+          marginBottom: '0.75rem',
+        }}
+      >
+        Today&apos;s briefing · {durationLabel}
+      </p>
+
+      {/* Summary */}
+      <p
+        style={{
+          fontSize: '16px',
+          color: 'var(--color-text-primary)',
+          lineHeight: 1.6,
+          marginBottom: '1.5rem',
+        }}
+      >
+        {transcript}
+      </p>
+
+      {/* Progress */}
+      <div style={{ marginBottom: '1.25rem' }}>
+        <div
+          style={{
+            height: '3px',
+            background: 'var(--color-background-tertiary)',
+            borderRadius: '100px',
+            marginBottom: '6px',
+            position: 'relative',
+            overflow: 'hidden',
+          }}
+        >
+          <div
+            style={{
+              height: '100%',
+              width: duration > 0 ? `${(currentTime / duration) * 100}%` : '0%',
+              background: 'var(--pulse-green)',
+              borderRadius: '100px',
+              transition: 'width 0.1s linear',
+            }}
+          />
+        </div>
+        {/* Hidden range for accessibility */}
+        <input
+          type="range"
+          min={0}
+          max={duration || 0}
+          value={currentTime}
+          onChange={handleSeek}
+          aria-label="Seek"
+          className="sr-only"
+        />
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            fontSize: '11px',
+            color: 'var(--color-text-tertiary)',
+          }}
+        >
+          <span>{formatTime(currentTime)}</span>
+          <span>{formatTime(duration)}</span>
+        </div>
+      </div>
+
+      {/* Controls */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+        {/* Rewind */}
+        <button
+          type="button"
+          onClick={() => seek(-10)}
+          aria-label="Rewind 10 seconds"
+          style={{
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            padding: '6px',
+            color: 'var(--color-text-secondary)',
+            display: 'flex',
+            alignItems: 'center',
+            borderRadius: 'var(--border-radius-md)',
+          }}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+            <path d="M3 3v5h5"/>
+            <path d="M12 7v5l3 3"/>
+          </svg>
+        </button>
+
+        {/* Play / Pause */}
         <button
           type="button"
           onClick={togglePlay}
           aria-label={isPlaying ? 'Pause' : 'Play'}
-          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gray-900 text-white hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:ring-offset-2"
+          style={{
+            width: '44px',
+            height: '44px',
+            borderRadius: '50%',
+            background: 'var(--pulse-green)',
+            border: 'none',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+          }}
         >
           {isPlaying ? (
-            <svg viewBox="0 0 24 24" className="h-5 w-5 fill-current" aria-hidden="true">
-              <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="white" aria-hidden="true">
+              <rect x="6" y="4" width="4" height="16" rx="1"/>
+              <rect x="14" y="4" width="4" height="16" rx="1"/>
             </svg>
           ) : (
-            <svg viewBox="0 0 24 24" className="h-5 w-5 fill-current" aria-hidden="true">
-              <path d="M8 5v14l11-7z" />
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="white" aria-hidden="true">
+              <path d="M8 5v14l11-7z"/>
             </svg>
           )}
         </button>
 
-        <div className="flex flex-1 flex-col gap-1">
-          {/* Progress bar */}
-          <input
-            type="range"
-            min={0}
-            max={duration || 0}
-            value={currentTime}
-            onChange={handleSeek}
-            aria-label="Seek"
-            className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-gray-200 accent-gray-900"
-          />
-          {/* Time display */}
-          <div className="flex justify-between text-xs text-gray-400">
-            <span>{formatTime(currentTime)}</span>
-            <span>{formatTime(duration)}</span>
-          </div>
-        </div>
-      </div>
+        {/* Forward */}
+        <button
+          type="button"
+          onClick={() => seek(10)}
+          aria-label="Forward 10 seconds"
+          style={{
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            padding: '6px',
+            color: 'var(--color-text-secondary)',
+            display: 'flex',
+            alignItems: 'center',
+            borderRadius: 'var(--border-radius-md)',
+          }}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+            <path d="M21 12a9 9 0 1 1-9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+            <path d="M21 3v5h-5"/>
+            <path d="M12 7v5l-3 3"/>
+          </svg>
+        </button>
 
-      {/* Speed + Transcript controls */}
-      <div className="mt-4 flex items-center justify-between">
-        {/* Speed selector */}
-        <div className="flex items-center gap-1" role="group" aria-label="Playback speed">
+        {/* Speed */}
+        <div role="group" aria-label="Playback speed" style={{ display: 'flex', gap: '4px', marginLeft: 'auto' }}>
           {([1, 1.5, 2] as const).map((s) => (
             <button
               key={s}
               type="button"
               onClick={() => handleSpeedChange(s)}
               aria-pressed={speed === s}
-              className={`min-h-[44px] rounded-md px-3 py-1.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-gray-900 focus:ring-offset-1 ${
-                speed === s
-                  ? 'bg-gray-900 text-white'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
+              style={{
+                background: speed === s ? 'var(--color-background-tertiary)' : 'none',
+                border: '0.5px solid var(--color-border-tertiary)',
+                borderRadius: '100px',
+                padding: '4px 10px',
+                fontSize: '12px',
+                fontWeight: 500,
+                color: speed === s ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
+                cursor: 'pointer',
+                minHeight: '32px',
+              }}
             >
-              {s}x
+              {s}×
             </button>
           ))}
         </div>
@@ -134,16 +274,38 @@ export default function BriefingPlayer({ audioUrl, transcript }: BriefingPlayerP
           type="button"
           onClick={() => setShowTranscript(!showTranscript)}
           aria-expanded={showTranscript}
-          className="text-xs font-medium text-gray-500 underline-offset-2 hover:text-gray-900 hover:underline focus:outline-none focus:ring-2 focus:ring-gray-900 focus:ring-offset-1"
+          style={{
+            fontSize: '12px',
+            color: 'var(--color-text-tertiary)',
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            textDecoration: 'underline',
+            textUnderlineOffset: '2px',
+          }}
         >
-          {showTranscript ? 'Hide transcript' : 'Show transcript'}
+          {showTranscript ? 'hide transcript' : 'show transcript'}
         </button>
       </div>
 
       {/* Transcript panel */}
       {showTranscript && (
-        <div className="mt-4 rounded-xl bg-gray-50 p-4">
-          <p className="text-sm leading-relaxed text-gray-700">{transcript}</p>
+        <div
+          style={{
+            borderTop: '0.5px solid var(--color-border-tertiary)',
+            marginTop: '1.25rem',
+            paddingTop: '1.25rem',
+          }}
+        >
+          <p
+            style={{
+              fontSize: '14px',
+              color: 'var(--color-text-secondary)',
+              lineHeight: 1.75,
+            }}
+          >
+            {transcript}
+          </p>
         </div>
       )}
     </div>

@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/team/activity",
+      "schedule": "0 6-22 * * 1-5"
+    }
+  ]
+}

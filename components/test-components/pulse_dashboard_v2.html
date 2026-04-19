@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pulse — Team Intelligence Dashboard</title>
+  <style>
+    :root {
+      --color-text-primary: #1a1a1a;
+      --color-text-secondary: #666666;
+      --color-text-tertiary: #999999;
+      --color-text-info: #0066cc;
+      --color-background-primary: #ffffff;
+      --color-background-secondary: #f5f5f5;
+      --color-background-tertiary: #eeeeee;
+      --color-background-info: #e6f2ff;
+      --color-border-secondary: #d9d9d9;
+      --color-border-tertiary: #e6e6e6;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #fafafa;
+      color: var(--color-text-primary);
+    }
+
+    .app {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 1.5rem;
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1.5rem;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .logo-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: #1D9E75;
+    }
+
+    .logo-txt {
+      font-size: 17px;
+      font-weight: 500;
+      color: var(--color-text-primary);
+    }
+
+    .nav {
+      display: flex;
+      gap: 4px;
+    }
+
+    .nav-btn {
+      padding: 5px 14px;
+      border-radius: 100px;
+      font-size: 13px;
+      border: none;
+      cursor: pointer;
+      font-family: inherit;
+      transition: all 0.2s;
+    }
+
+    .nav-btn.active {
+      background: #1D9E75;
+      color: #fff;
+    }
+
+    .nav-btn.inactive {
+      background: none;
+      color: var(--color-text-secondary);
+      border: 0.5px solid var(--color-border-tertiary);
+    }
+
+    .nav-btn.inactive:hover {
+      background: var(--color-background-secondary);
+    }
+
+    .avatar {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      background: var(--color-background-info);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--color-text-info);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .card {
+      background: var(--color-background-primary);
+      border: 0.5px solid var(--color-border-tertiary);
+      border-radius: 12px;
+      padding: 1.25rem;
+    }
+
+    .card.conflict-border {
+      border-color: #E24B4A;
+      border-width: 1px;
+    }
+
+    .card.synergy-border {
+      border-color: #1D9E75;
+      border-width: 1px;
+    }
+
+    .label {
+      font-size: 11px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-text-tertiary);
+      margin-bottom: 0.75rem;
+    }
+
+    .player-summary {
+      font-size: 14px;
+      color: var(--color-text-primary);
+      line-height: 1.6;
+      margin-bottom: 1rem;
+    }
+
+    .player-summary strong {
+      font-weight: 500;
+    }
+
+    .progress-track {
+      height: 3px;
+      background: var(--color-background-tertiary);
+      border-radius: 100px;
+      margin-bottom: 6px;
+    }
+
+    .progress-fill {
+      height: 100%;
+      width: 42%;
+      background: #1D9E75;
+      border-radius: 100px;
+    }
+
+    .progress-times {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--color-text-tertiary);
+      margin-bottom: 1rem;
+    }
+
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .play-btn {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      background: #1D9E75;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: background 0.2s;
+    }
+
+    .play-btn:hover {
+      background: #158a63;
+    }
+
+    .ctrl {
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--color-text-secondary);
+      padding: 4px;
+      display: flex;
+      align-items: center;
+      border-radius: 6px;
+      transition: background 0.2s;
+    }
+
+    .ctrl:hover {
+      background: var(--color-background-secondary);
+    }
+
+    .speed {
+      background: var(--color-background-secondary);
+      border: 0.5px solid var(--color-border-tertiary);
+      border-radius: 100px;
+      padding: 3px 10px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--color-text-secondary);
+      cursor: pointer;
+      margin-left: auto;
+      transition: all 0.2s;
+    }
+
+    .speed:hover {
+      background: var(--color-background-tertiary);
+    }
+
+    .transcript-btn {
+      font-size: 12px;
+      color: var(--color-text-tertiary);
+      background: none;
+      border: none;
+      cursor: pointer;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+      transition: color 0.2s;
+    }
+
+    .transcript-btn:hover {
+      color: var(--color-text-secondary);
+    }
+
+    .ask-btn {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 14px;
+      background: none;
+      border: 0.5px solid var(--color-border-secondary);
+      border-radius: 8px;
+      font-size: 13px;
+      color: var(--color-text-primary);
+      cursor: pointer;
+      width: 100%;
+      justify-content: center;
+      font-family: inherit;
+      margin-top: 0.75rem;
+      transition: all 0.2s;
+    }
+
+    .ask-btn:hover {
+      background: var(--color-background-secondary);
+      border-color: var(--color-border-tertiary);
+    }
+
+    .ask-sub {
+      font-size: 12px;
+      color: var(--color-text-secondary);
+      line-height: 1.5;
+      margin-top: 4px;
+    }
+
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 13px;
+      padding: 5px 0;
+    }
+
+    .stat-key {
+      color: var(--color-text-secondary);
+    }
+
+    .stat-val {
+      font-weight: 500;
+      color: var(--color-text-primary);
+    }
+
+    .stat-val.warn {
+      color: #BA7517;
+    }
+
+    .stat-val.good {
+      color: #0F6E56;
+    }
+
+    .stat-val.danger {
+      color: #A32D2D;
+    }
+
+    .divider {
+      height: 0.5px;
+      background: var(--color-border-tertiary);
+      margin: 8px 0;
+    }
+
+    .alert-card {
+      background: var(--color-background-primary);
+      border-radius: 12px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 0.75rem;
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+    }
+
+    .alert-card.conflict {
+      border: 1px solid #E24B4A;
+      background: #FCEBEB;
+    }
+
+    .alert-card.synergy {
+      border: 1px solid #5DCAA5;
+      background: #E1F5EE;
+    }
+
+    .alert-card.awareness {
+      border: 0.5px solid var(--color-border-tertiary);
+    }
+
+    .alert-icon {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    .icon-conflict {
+      background: #F7C1C1;
+    }
+
+    .icon-synergy {
+      background: #9FE1CB;
+    }
+
+    .icon-awareness {
+      background: var(--color-background-secondary);
+    }
+
+    .alert-title {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--color-text-primary);
+      margin-bottom: 3px;
+    }
+
+    .alert-title.conflict {
+      color: #A32D2D;
+    }
+
+    .alert-title.synergy {
+      color: #085041;
+    }
+
+    .alert-body {
+      font-size: 12px;
+      color: var(--color-text-secondary);
+      line-height: 1.5;
+    }
+
+    .alert-tag {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 500;
+      padding: 2px 8px;
+      border-radius: 100px;
+      margin-right: 6px;
+      margin-top: 6px;
+    }
+
+    .tag-conflict {
+      background: #F7C1C1;
+      color: #791F1F;
+    }
+
+    .tag-synergy {
+      background: #9FE1CB;
+      color: #085041;
+    }
+
+    .tag-awareness {
+      background: var(--color-background-secondary);
+      color: var(--color-text-secondary);
+      border: 0.5px solid var(--color-border-tertiary);
+    }
+
+    .member-card {
+      background: var(--color-background-primary);
+      border: 0.5px solid var(--color-border-tertiary);
+      border-radius: 12px;
+      padding: 1rem;
+    }
+
+    .member-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .member-av {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 500;
+      flex-shrink: 0;
+    }
+
+    .av-blue {
+      background: var(--color-background-info);
+      color: var(--color-text-info);
+    }
+
+    .av-purple {
+      background: #EEEDFE;
+      color: #3C3489;
+    }
+
+    .av-amber {
+      background: #FAEEDA;
+      color: #854F0B;
+    }
+
+    .av-coral {
+      background: #FAECE7;
+      color: #993C1D;
+    }
+
+    .member-name {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--color-text-primary);
+    }
+
+    .member-status {
+      font-size: 11px;
+      color: var(--color-text-tertiary);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .member-focus {
+      font-size: 12px;
+      color: var(--color-text-secondary);
+      line-height: 1.5;
+      margin-bottom: 8px;
+    }
+
+    .member-focus.inactive {
+      color: var(--color-text-tertiary);
+      font-style: italic;
+    }
+
+    .repo-pill {
+      display: inline-block;
+      font-size: 11px;
+      padding: 2px 8px;
+      background: var(--color-background-secondary);
+      border: 0.5px solid var(--color-border-tertiary);
+      border-radius: 100px;
+      color: var(--color-text-secondary);
+      margin: 2px 4px 2px 0;
+    }
+
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      display: inline-block;
+      margin-right: 4px;
+    }
+
+    .dot-green {
+      background: #1D9E75;
+    }
+
+    .dot-gray {
+      background: var(--color-text-tertiary);
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.75rem;
+      margin-top: 1.25rem;
+    }
+
+    .section-count {
+      font-size: 12px;
+      color: var(--color-text-tertiary);
+      background: var(--color-background-secondary);
+      padding: 2px 8px;
+      border-radius: 100px;
+      border: 0.5px solid var(--color-border-tertiary);
+    }
+
+    .sidebar {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .main-grid {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr;
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    @media (max-width: 768px) {
+      .main-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .grid-3 {
+        grid-template-columns: 1fr;
+      }
+
+      .controls {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .speed {
+        margin-left: 0;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="logo">
+      <div class="logo-dot"></div>
+      <span class="logo-txt">Pulse</span>
+    </div>
+    <div class="nav">
+      <button class="nav-btn active">My briefing</button>
+      <button class="nav-btn inactive">Team</button>
+    </div>
+    <div class="avatar">JD</div>
+  </div>
+
+  <!-- Main Content -->
+  <div class="main-grid">
+
+    <!-- Left: Briefing Player -->
+    <div class="card">
+      <div class="label">Today's briefing · 2 min 58 sec</div>
+      <p class="player-summary">
+        Heads up — <strong>Ana is also touching the auth module</strong>, and you both have open PRs there. Before anything else, that's worth a quick message. On the positive side, you merged the KV cache layer yesterday and closed the OAuth refresh bug. You have four meetings today starting with standup at 9am.
+      </p>
+      <div class="progress-track"><div class="progress-fill"></div></div>
+      <div class="progress-times"><span>1:14</span><span>2:58</span></div>
+      <div class="controls">
+        <button class="ctrl" title="Rewind 10s">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+        </button>
+        <button class="play-btn" title="Pause">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="white"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
+        </button>
+        <button class="ctrl" title="Forward 10s">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 12a9 9 0 1 1-9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+        </button>
+        <button class="speed">1.5×</button>
+        <button class="transcript-btn">transcript</button>
+      </div>
+    </div>
+
+    <!-- Right Sidebar -->
+    <div class="sidebar">
+      <!-- Ask Pulse Card -->
+      <div class="card">
+        <div class="label">Ask Pulse</div>
+        <p class="ask-sub">Ask about your work or what your teammates are up to.</p>
+        <button class="ask-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1D9E75" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+          Start voice session
+        </button>
+      </div>
+
+      <!-- At a Glance Card -->
+      <div class="card">
+        <div class="label">Today at a glance</div>
+        <div class="stat-row"><span class="stat-key">Meetings</span><span class="stat-val warn">4 · 2.5 hrs</span></div>
+        <div class="divider"></div>
+        <div class="stat-row"><span class="stat-key">Open PRs</span><span class="stat-val">2</span></div>
+        <div class="divider"></div>
+        <div class="stat-row"><span class="stat-key">Team conflicts</span><span class="stat-val danger">1</span></div>
+        <div class="divider"></div>
+        <div class="stat-row"><span class="stat-key">Synergies</span><span class="stat-val good">2</span></div>
+        <div class="divider"></div>
+        <div class="stat-row"><span class="stat-key">Merged yesterday</span><span class="stat-val good">1 PR</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Team Overlaps Section -->
+  <div class="section-header">
+    <div class="label" style="margin: 0;">Team overlaps</div>
+    <span class="section-count">3 detected today</span>
+  </div>
+
+  <!-- Conflict Alert -->
+  <div class="alert-card conflict">
+    <div class="alert-icon icon-conflict">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#A32D2D" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+    </div>
+    <div>
+      <div class="alert-title conflict">Conflict — you and Ana · src/lib/auth/</div>
+      <div class="alert-body">Both of you have open PRs modifying the auth module. Ana's PR #51 touches session handling; yours (#42) touches token refresh. These will conflict on merge.</div>
+      <span class="alert-tag tag-conflict">Conflict</span>
+      <span class="alert-tag tag-awareness">pulse-app</span>
+    </div>
+  </div>
+
+  <!-- Synergy Alert -->
+  <div class="alert-card synergy">
+    <div class="alert-icon icon-synergy">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#085041" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+    </div>
+    <div>
+      <div class="alert-title synergy">Synergy — you and Marcos · Caching layer</div>
+      <div class="alert-body">Marcos is building a Redis cache for the notifications service while you just finished the KV cache layer. You might share patterns or avoid duplicating infrastructure decisions.</div>
+      <span class="alert-tag tag-synergy">Synergy</span>
+      <span class="alert-tag tag-awareness">2 repos</span>
+    </div>
+  </div>
+
+  <!-- Awareness Alert -->
+  <div class="alert-card awareness">
+    <div class="alert-icon icon-awareness">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-secondary)" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+    </div>
+    <div>
+      <div class="alert-title">Awareness — Lucía is also in pulse-app</div>
+      <div class="alert-body">Lucía committed to pulse-app yesterday, working on the dashboard UI components. No file overlap detected — just good to know.</div>
+      <span class="alert-tag tag-awareness">Awareness</span>
+      <span class="alert-tag tag-awareness">pulse-app</span>
+    </div>
+  </div>
+
+  <!-- Team Members Section -->
+  <div class="section-header">
+    <div class="label" style="margin: 0;">Team · 4 members active today</div>
+    <span class="section-count">updated 14 min ago</span>
+  </div>
+
+  <div class="grid-3">
+    <!-- Ana M. -->
+    <div class="member-card">
+      <div class="member-header">
+        <div class="member-av av-purple">AM</div>
+        <div style="flex: 1;">
+          <div class="member-name">Ana M.</div>
+          <div class="member-status">
+            <span class="status-dot dot-green"></span>
+            <span>active</span>
+          </div>
+        </div>
+      </div>
+      <div class="member-focus">Auth module refactor and session handling improvements.</div>
+      <span class="repo-pill">pulse-app</span>
+    </div>
+
+    <!-- Marcos R. -->
+    <div class="member-card">
+      <div class="member-header">
+        <div class="member-av av-amber">MR</div>
+        <div style="flex: 1;">
+          <div class="member-name">Marcos R.</div>
+          <div class="member-status">
+            <span class="status-dot dot-green"></span>
+            <span>active</span>
+          </div>
+        </div>
+      </div>
+      <div class="member-focus">Redis caching for notifications and background jobs.</div>
+      <span class="repo-pill">notifications-svc</span>
+    </div>
+
+    <!-- Lucía V. -->
+    <div class="member-card">
+      <div class="member-header">
+        <div class="member-av av-coral">LV</div>
+        <div style="flex: 1;">
+          <div class="member-name">Lucía V.</div>
+          <div class="member-status">
+            <span class="status-dot dot-green"></span>
+            <span>active</span>
+          </div>
+        </div>
+      </div>
+      <div class="member-focus">Dashboard UI components and mobile responsive layout.</div>
+      <span class="repo-pill">pulse-app</span>
+    </div>
+  </div>
+
+  <!-- Inactive Member Example -->
+  <div class="grid-3" style="margin-bottom: 0;">
+    <div class="member-card">
+      <div class="member-header">
+        <div class="member-av av-blue">SJ</div>
+        <div style="flex: 1;">
+          <div class="member-name">Sarah J.</div>
+          <div class="member-status">
+            <span class="status-dot dot-gray"></span>
+            <span>no activity today</span>
+          </div>
+        </div>
+      </div>
+      <div class="member-focus inactive">No recent activity</div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

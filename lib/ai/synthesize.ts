@@ -1,5 +1,5 @@
 import { GoogleGenerativeAI } from '@google/generative-ai'
-import type { BriefingContent, GitHubActivity, GoogleActivity, JiraActivity } from '@/types'
+import type { BriefingContent, GitHubActivity, GoogleActivity, JiraActivity, TeamAlert } from '@/types'
 import { buildBriefingPrompt } from './prompts'
 
 const GEMINI_MODEL = 'gemini-2.5-flash'
@@ -8,6 +8,7 @@ export async function synthesizeBriefing(data: {
   github: GitHubActivity | null
   google: GoogleActivity | null
   jira: JiraActivity | null
+  teamAlerts?: TeamAlert[]
 }): Promise<BriefingContent> {
   const apiKey = process.env.GOOGLE_API_KEY
   if (!apiKey) {
@@ -17,7 +18,10 @@ export async function synthesizeBriefing(data: {
   const genAI = new GoogleGenerativeAI(apiKey)
   const model = genAI.getGenerativeModel({ model: GEMINI_MODEL })
 
-  const prompt = buildBriefingPrompt(data)
+  const prompt = buildBriefingPrompt({
+    ...data,
+    teamAlerts: data.teamAlerts ?? [],
+  })
 
   const result = await model.generateContent(prompt)
   const text = result.response.text()

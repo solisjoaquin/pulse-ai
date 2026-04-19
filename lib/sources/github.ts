@@ -244,12 +244,16 @@ export async function fetchGitHubActivity(
     }
 
     // 5. Return full typed GitHubActivity object
+    // Note: modifiedFiles requires per-commit detail fetches which are not
+    // performed here for performance reasons. The field is populated by
+    // aggregateTeamActivity when building MemberActivity for team overlap detection.
     return {
       commits,
       openPRs,
       pendingReviews,
       closedIssues,
       mergedPRs,
+      modifiedFiles: [],
     }
   } catch (error) {
     console.error('[GitHub] fetchGitHubActivity failed:', error)

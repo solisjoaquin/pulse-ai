@@ -10,12 +10,14 @@ type ErrorResponse = { error: string }
 export async function GET(): Promise<
   NextResponse<StatusReadyResponse | StatusPendingResponse | ErrorResponse>
 > {
+  const isDemoMode = process.env.DEMO_MODE === 'true'
+
   const session = await auth()
-  if (!session?.user?.id) {
+  if (!isDemoMode && !session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const userId = session.user.id
+  const userId: string = isDemoMode ? 'demo-user' : (session!.user!.id as string)
   const today = new Date().toISOString().split('T')[0]
 
   const briefing = await getCachedBriefing(userId, today)

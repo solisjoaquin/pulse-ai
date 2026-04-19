@@ -2,13 +2,11 @@ import { redirect } from 'next/navigation'
 import { auth } from '@/auth'
 import OnboardingFlow from '@/components/onboarding/OnboardingFlow'
 
-export default async function LoginPage(): Promise<React.ReactElement> {
+export default async function OnboardingSourcesPage(): Promise<React.ReactElement> {
   const session = await auth()
 
-  // Already authenticated — send to the team onboarding step (sources already done)
-  // or to the sources step if they haven't connected anything yet
-  if (session) {
-    redirect('/onboarding/sources')
+  if (!session) {
+    redirect('/login')
   }
 
   return (
@@ -21,12 +19,24 @@ export default async function LoginPage(): Promise<React.ReactElement> {
             className="h-8 w-8 fill-white"
             aria-hidden="true"
           >
-            {/* Simple waveform icon */}
             <path d="M3 12h2v4H3v-4zm4-4h2v12H7V8zm4-4h2v16h-2V4zm4 4h2v12h-2V8zm4 4h2v4h-2v-4z" />
           </svg>
         </div>
         <h1 className="text-3xl font-bold tracking-tight text-gray-900">Pulse</h1>
         <p className="text-sm text-gray-500">Your voice-first daily briefing</p>
+      </div>
+
+      {/* Step indicator */}
+      <div className="mb-6 flex items-center gap-2">
+        <div className="flex h-6 w-6 items-center justify-center rounded-full bg-gray-900 text-xs font-semibold text-white">
+          1
+        </div>
+        <span className="text-sm font-medium text-gray-900">Connect sources</span>
+        <div className="h-px w-8 bg-gray-300" />
+        <div className="flex h-6 w-6 items-center justify-center rounded-full bg-gray-200 text-xs font-semibold text-gray-500">
+          2
+        </div>
+        <span className="text-sm text-gray-400">Set up team</span>
       </div>
 
       {/* Onboarding wizard */}

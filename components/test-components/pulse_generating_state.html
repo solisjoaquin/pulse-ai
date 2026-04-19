@@ -1,0 +1,108 @@
+
+<h2 class="sr-only">Pulse loading screen showing the briefing generation pipeline with animated step indicators</h2>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;}
+  .wrap{max-width:520px;margin:0 auto;padding:3rem 1.5rem;}
+  .logo{display:flex;align-items:center;gap:8px;margin-bottom:3rem;}
+  .logo-dot{width:10px;height:10px;border-radius:50%;background:#1D9E75;}
+  .logo-text{font-size:18px;font-weight:500;color:var(--color-text-primary);}
+  .center{text-align:center;margin-bottom:2.5rem;}
+  .pulse-ring{width:64px;height:64px;border-radius:50%;border:1.5px solid #1D9E75;margin:0 auto 1.5rem;display:flex;align-items:center;justify-content:center;position:relative;}
+  .pulse-inner{width:40px;height:40px;border-radius:50%;background:#E1F5EE;display:flex;align-items:center;justify-content:center;}
+  .center h2{font-size:20px;font-weight:500;color:var(--color-text-primary);margin-bottom:0.5rem;}
+  .center p{font-size:14px;color:var(--color-text-secondary);}
+  .steps{display:flex;flex-direction:column;gap:0;}
+  .step{display:flex;align-items:flex-start;gap:16px;padding:1rem 0;}
+  .step-line{display:flex;flex-direction:column;align-items:center;flex-shrink:0;}
+  .step-dot{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .dot-done{background:#E1F5EE;border:1px solid #5DCAA5;}
+  .dot-active{background:#1D9E75;}
+  .dot-pending{background:var(--color-background-secondary);border:0.5px solid var(--color-border-tertiary);}
+  .step-connector{width:1.5px;height:24px;background:var(--color-border-tertiary);margin:4px 0;}
+  .step-connector.done{background:#5DCAA5;}
+  .step-body{padding-top:4px;flex:1;}
+  .step-title{font-size:14px;font-weight:500;color:var(--color-text-primary);margin-bottom:2px;}
+  .step-title.pending{color:var(--color-text-tertiary);font-weight:400;}
+  .step-sub{font-size:12px;color:var(--color-text-secondary);}
+  .step-sub.active{color:#0F6E56;}
+  .spinner{width:12px;height:12px;border:1.5px solid rgba(255,255,255,0.3);border-top-color:white;border-radius:50%;animation:spin 0.8s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .eta{text-align:center;margin-top:2rem;font-size:13px;color:var(--color-text-tertiary);}
+</style>
+
+<div class="wrap">
+  <div class="logo">
+    <div class="logo-dot"></div>
+    <span class="logo-text">Pulse</span>
+  </div>
+
+  <div class="center">
+    <div class="pulse-ring">
+      <div class="pulse-inner">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1D9E75" stroke-width="1.5">
+          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+          <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+          <line x1="12" y1="19" x2="12" y2="23"/>
+          <line x1="8" y1="23" x2="16" y2="23"/>
+        </svg>
+      </div>
+    </div>
+    <h2>Building your briefing</h2>
+    <p>Pulling together everything that happened since yesterday.</p>
+  </div>
+
+  <div class="steps">
+
+    <div class="step">
+      <div class="step-line">
+        <div class="step-dot dot-done">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0F6E56" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <div class="step-connector done"></div>
+      </div>
+      <div class="step-body">
+        <div class="step-title">GitHub</div>
+        <div class="step-sub">3 commits · 2 open PRs · 1 pending review</div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-line">
+        <div class="step-dot dot-done">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0F6E56" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <div class="step-connector done"></div>
+      </div>
+      <div class="step-body">
+        <div class="step-title">Google Calendar</div>
+        <div class="step-sub">4 meetings today · 2.5 hrs total</div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-line">
+        <div class="step-dot dot-active">
+          <div class="spinner"></div>
+        </div>
+        <div class="step-connector"></div>
+      </div>
+      <div class="step-body">
+        <div class="step-title">Synthesizing with Claude</div>
+        <div class="step-sub active">Writing your briefing script...</div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-line">
+        <div class="step-dot dot-pending"></div>
+      </div>
+      <div class="step-body">
+        <div class="step-title pending">Generating audio with ElevenLabs</div>
+        <div class="step-sub">Almost there</div>
+      </div>
+    </div>
+
+  </div>
+
+  <p class="eta">Ready in about 15 seconds</p>
+</div>

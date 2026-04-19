@@ -5,7 +5,6 @@ import { useState, useRef, useCallback } from 'react'
 type AssistantState = 'idle' | 'connecting' | 'active' | 'summary'
 
 interface SessionSummary {
-  questionsAsked: number
   sessionDuration: number // seconds
 }
 
@@ -21,27 +20,22 @@ export default function AssistantButton(): JSX.Element {
     setError(null)
 
     try {
-      // Get signed URL from our API
       const res = await fetch('/api/assistant/session', { method: 'POST' })
       if (!res.ok) throw new Error('Failed to initialize voice assistant')
 
       const data = (await res.json()) as { signedUrl: string }
 
-      // Request mic permission
       await navigator.mediaDevices.getUserMedia({ audio: true })
 
-      // Connect to ElevenLabs via WebSocket using the signed URL
       const ws = new WebSocket(data.signedUrl)
       wsRef.current = ws
       startTimeRef.current = Date.now()
 
-      ws.onopen = (): void => {
-        setState('active')
-      }
+      ws.onopen = (): void => setState('active')
 
       ws.onclose = (): void => {
         const duration = Math.round((Date.now() - startTimeRef.current) / 1000)
-        setSummary({ questionsAsked: 0, sessionDuration: duration })
+        setSummary({ sessionDuration: duration })
         setState('summary')
         wsRef.current = null
       }
@@ -71,74 +65,185 @@ export default function AssistantButton(): JSX.Element {
     setError(null)
   }
 
-  return (
-    <div className="flex flex-col items-center gap-3">
-      {state === 'idle' && (
-        <>
-          <button
-            type="button"
-            onClick={() => void startSession()}
-            className="flex min-h-[44px] items-center gap-2 rounded-full bg-gray-900 px-6 py-3 text-sm font-medium text-white hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:ring-offset-2"
-          >
-            {/* Mic icon */}
-            <svg viewBox="0 0 24 24" className="h-4 w-4 fill-current" aria-hidden="true">
-              <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm-1-9c0-.55.45-1 1-1s1 .45 1 1v6c0 .55-.45 1-1 1s-1-.45-1-1V5zm6 6c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
-            </svg>
-            Ask Pulse
-          </button>
-          {error && (
-            <p role="alert" className="text-center text-xs text-red-600">
-              {error}
-            </p>
-          )}
-        </>
-      )}
-
-      {state === 'connecting' && (
-        <div className="flex items-center gap-2 text-sm text-gray-500">
-          <div
-            className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-gray-900"
-            role="status"
-            aria-label="Connecting..."
-          />
-          Connecting...
-        </div>
-      )}
-
-      {state === 'active' && (
-        <div className="flex flex-col items-center gap-3">
-          <div className="flex items-center gap-2">
-            {/* Pulsing indicator */}
-            <span className="relative flex h-3 w-3" aria-hidden="true">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
-              <span className="relative inline-flex h-3 w-3 rounded-full bg-red-500" />
-            </span>
-            <span className="text-sm font-medium text-gray-700">Listening...</span>
-          </div>
-          <button
-            type="button"
-            onClick={stopSession}
-            className="min-h-[44px] rounded-full border border-gray-300 bg-white px-5 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:ring-offset-2"
-          >
-            Stop
-          </button>
-        </div>
-      )}
-
-      {state === 'summary' && summary && (
-        <div className="flex flex-col items-center gap-3 text-center">
-          <p className="text-sm text-gray-600">
-            Session ended after {summary.sessionDuration} seconds.
+  // ── Idle ──────────────────────────────────────────────────────────────────
+  if (state === 'idle') {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+        <button
+          type="button"
+          onClick={() => void startSession()}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '8px 14px',
+            background: 'none',
+            border: '0.5px solid var(--color-border-secondary)',
+            borderRadius: 'var(--border-radius-md)',
+            fontSize: '13px',
+            color: 'var(--color-text-primary)',
+            cursor: 'pointer',
+            width: '100%',
+            justifyContent: 'center',
+            minHeight: '44px',
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--pulse-green)" strokeWidth="2" aria-hidden="true">
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+            <line x1="12" y1="19" x2="12" y2="23"/>
+            <line x1="8" y1="23" x2="16" y2="23"/>
+          </svg>
+          Start voice session
+        </button>
+        {error && (
+          <p role="alert" style={{ fontSize: '12px', color: '#DC2626', textAlign: 'center' }}>
+            {error}
           </p>
-          <button
-            type="button"
-            onClick={reset}
-            className="min-h-[44px] rounded-full bg-gray-900 px-5 py-2 text-sm font-medium text-white hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:ring-offset-2"
+        )}
+      </div>
+    )
+  }
+
+  // ── Connecting ────────────────────────────────────────────────────────────
+  if (state === 'connecting') {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: 'var(--color-text-secondary)' }}>
+        <div
+          role="status"
+          aria-label="Connecting..."
+          style={{
+            width: '14px',
+            height: '14px',
+            borderRadius: '50%',
+            border: '1.5px solid var(--color-border-primary)',
+            borderTopColor: 'var(--pulse-green)',
+            animation: 'spin 0.8s linear infinite',
+          }}
+        />
+        Connecting...
+      </div>
+    )
+  }
+
+  // ── Active ────────────────────────────────────────────────────────────────
+  if (state === 'active') {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', width: '100%' }}>
+        {/* Mic ring */}
+        <div
+          style={{
+            width: '72px',
+            height: '72px',
+            borderRadius: '50%',
+            border: '1.5px solid var(--pulse-green)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <div
+            style={{
+              width: '52px',
+              height: '52px',
+              borderRadius: '50%',
+              background: 'var(--pulse-green)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
           >
-            Ask again
-          </button>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5" aria-hidden="true">
+              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+              <line x1="12" y1="19" x2="12" y2="23"/>
+              <line x1="8" y1="23" x2="16" y2="23"/>
+            </svg>
+          </div>
         </div>
-      )}
+
+        <div style={{ textAlign: 'center' }}>
+          <p style={{ fontSize: '14px', fontWeight: 500, color: 'var(--pulse-green-dark)', marginBottom: '4px' }}>
+            Listening...
+          </p>
+          <p style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>
+            Pulse is ready for your question
+          </p>
+        </div>
+
+        {/* Waveform bars */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }} aria-hidden="true">
+          {[8, 20, 32, 24, 14, 28, 10].map((h, i) => (
+            <div
+              key={i}
+              style={{
+                width: '3px',
+                height: `${h}px`,
+                borderRadius: '2px',
+                background: 'var(--pulse-green)',
+                opacity: 0.4 + (h / 32) * 0.6,
+              }}
+            />
+          ))}
+        </div>
+
+        <button
+          type="button"
+          onClick={stopSession}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '8px 18px',
+            background: 'none',
+            border: '0.5px solid var(--color-border-secondary)',
+            borderRadius: 'var(--border-radius-md)',
+            fontSize: '13px',
+            color: 'var(--color-text-secondary)',
+            cursor: 'pointer',
+            minHeight: '44px',
+          }}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="var(--color-text-secondary)" aria-hidden="true">
+            <rect x="3" y="3" width="18" height="18" rx="2"/>
+          </svg>
+          End session
+        </button>
+      </div>
+    )
+  }
+
+  // ── Summary ───────────────────────────────────────────────────────────────
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', textAlign: 'center' }}>
+      <p style={{ fontSize: '13px', color: 'var(--color-text-secondary)' }}>
+        Session ended{summary ? ` · ${summary.sessionDuration}s` : ''}.
+      </p>
+      <button
+        type="button"
+        onClick={reset}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          padding: '8px 14px',
+          background: 'none',
+          border: '0.5px solid var(--color-border-secondary)',
+          borderRadius: 'var(--border-radius-md)',
+          fontSize: '13px',
+          color: 'var(--color-text-primary)',
+          cursor: 'pointer',
+          minHeight: '44px',
+        }}
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--pulse-green)" strokeWidth="2" aria-hidden="true">
+          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+          <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+          <line x1="12" y1="19" x2="12" y2="23"/>
+          <line x1="8" y1="23" x2="16" y2="23"/>
+        </svg>
+        Start new session
+      </button>
     </div>
   )
 }

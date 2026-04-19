@@ -66,6 +66,11 @@ export const MOCK_GITHUB: GitHubActivity = {
       daysOpen: 0,
     },
   ],
+  modifiedFiles: [
+    'src/lib/auth/session.ts',
+    'src/lib/cache/briefing.ts',
+    'src/components/dashboard/BriefingPlayer.tsx',
+  ],
 }
 
 export const MOCK_GOOGLE: GoogleActivity = {

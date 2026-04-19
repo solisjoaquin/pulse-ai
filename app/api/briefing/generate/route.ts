@@ -6,7 +6,51 @@ import { fetchJiraActivity } from '@/lib/sources/jira'
 import { synthesizeBriefing } from '@/lib/ai/synthesize'
 import { generateAudio } from '@/lib/voice/tts'
 import { getCachedBriefing, cacheBriefing } from '@/lib/cache/briefing'
-import type { DailyBriefing } from '@/types'
+import { getMemberActivity, getCachedOverlaps } from '@/lib/cache/team'
+import type { DailyBriefing, Overlap, Team, TeamAlert } from '@/types'
+
+// ─── KV helper ────────────────────────────────────────────────────────────────
+
+async function getKv(): Promise<import('@vercel/kv').VercelKV | null> {
+  if (!process.env.KV_REST_API_URL || !process.env.KV_REST_API_TOKEN) {
+    return null
+  }
+  try {
+    const { kv } = await import('@vercel/kv')
+    return kv
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Find the teamId for a given user by scanning team records in KV.
+ * Returns null if the user is not a member of any team or KV is unavailable.
+ */
+async function findTeamIdForUser(userId: string): Promise<string | null> {
+  try {
+    const kv = await getKv()
+    if (!kv) return null
+
+    const keys = await kv.keys('team:*')
+    if (keys.length === 0) return null
+
+    const teams = await Promise.all(keys.map((key) => kv.get<Team>(key)))
+
+    for (const team of teams) {
+      if (team && team.memberIds.includes(userId)) {
+        return team.id
+      }
+    }
+
+    return null
+  } catch (error) {
+    console.error('[API] findTeamIdForUser failed:', error)
+    return null
+  }
+}
+
+// ─── Route handler ────────────────────────────────────────────────────────────
 
 export async function POST(): Promise<NextResponse> {
   // 1. Auth check
@@ -26,7 +70,40 @@ export async function POST(): Promise<NextResponse> {
     return NextResponse.json(cached)
   }
 
-  // 3. Fetch all sources in parallel
+  // 3. Fetch user's MemberActivity from KV (requires teamId lookup)
+  //    Used to enrich context; teamId is also needed for overlap lookup below.
+  const teamId = isDemoMode ? null : await findTeamIdForUser(userId)
+
+  // MemberActivity is fetched for future use (e.g. enriching the prompt with
+  // pre-computed focusSummary). Currently the overlap pipeline is the primary
+  // consumer; the variable is retained for forward compatibility.
+  const _memberActivity = teamId
+    ? await getMemberActivity(teamId, userId, today)
+    : null
+
+  // 4. Fetch team Overlap[] from KV, filter to overlaps involving this user
+  const allOverlaps: Overlap[] = teamId
+    ? (await getCachedOverlaps(teamId, today)) ?? []
+    : []
+
+  const relevantOverlaps: Overlap[] = allOverlaps.filter((overlap) =>
+    overlap.memberIds.includes(userId)
+  )
+
+  // 5. Convert relevant Overlaps to TeamAlert[] for the briefing prompt
+  const teamAlerts: TeamAlert[] = relevantOverlaps.map((overlap): TeamAlert => {
+    // Identify the other member in this overlap
+    const otherMemberId =
+      overlap.memberIds[0] === userId ? overlap.memberIds[1] : overlap.memberIds[0]
+
+    return {
+      type: overlap.type,
+      message: overlap.reason,
+      withMember: otherMemberId,
+    }
+  })
+
+  // 6. Fetch all sources in parallel
   const [githubResult, googleResult, jiraResult] = await Promise.allSettled([
     isDemoMode || session?.githubAccessToken
       ? fetchGitHubActivity(session?.githubAccessToken ?? '')
@@ -45,10 +122,10 @@ export async function POST(): Promise<NextResponse> {
     jira: jiraResult.status === 'fulfilled' ? jiraResult.value : null,
   }
 
-  // 4. Synthesize briefing text via Gemini
+  // 7. Synthesize briefing text via Gemini (with team alerts)
   let content
   try {
-    content = await synthesizeBriefing(sources)
+    content = await synthesizeBriefing({ ...sources, teamAlerts })
   } catch (error) {
     console.error('[API] synthesizeBriefing failed:', error)
     return NextResponse.json(
@@ -57,7 +134,7 @@ export async function POST(): Promise<NextResponse> {
     )
   }
 
-  // 5. Generate audio via ElevenLabs
+  // 8. Generate audio via ElevenLabs
   // Build the spoken text from the briefing content
   const spokenText = [
     content.summary,
@@ -77,7 +154,7 @@ export async function POST(): Promise<NextResponse> {
     )
   }
 
-  // 6. Build DailyBriefing object
+  // 9. Build DailyBriefing object with relevantOverlaps populated
   const briefing: DailyBriefing = {
     id: `${userId}-${today}`,
     userId,
@@ -86,12 +163,13 @@ export async function POST(): Promise<NextResponse> {
     sources,
     content,
     audioUrl,
+    relevantOverlaps,
     generatedAt: new Date().toISOString(),
   }
 
-  // 7. Cache the briefing
+  // 10. Cache the briefing
   await cacheBriefing(briefing)
 
-  // 8. Return briefing
+  // 11. Return briefing
   return NextResponse.json(briefing)
 }

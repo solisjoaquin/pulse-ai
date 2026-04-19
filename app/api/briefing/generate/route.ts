@@ -4,9 +4,9 @@ import { fetchGitHubActivity } from '@/lib/sources/github'
 import { fetchGoogleActivity } from '@/lib/sources/google'
 import { fetchJiraActivity } from '@/lib/sources/jira'
 import { synthesizeBriefing } from '@/lib/ai/synthesize'
-import { generateAudio } from '@/lib/voice/tts'
 import { getCachedBriefing, cacheBriefing } from '@/lib/cache/briefing'
 import { getMemberActivity, getCachedOverlaps } from '@/lib/cache/team'
+import { MOCK_OVERLAPS } from '@/lib/mock/data'
 import type { DailyBriefing, Overlap, Team, TeamAlert } from '@/types'
 
 // ─── KV helper ────────────────────────────────────────────────────────────────
@@ -82,7 +82,10 @@ export async function POST(): Promise<NextResponse> {
     : null
 
   // 4. Fetch team Overlap[] from KV, filter to overlaps involving this user
-  const allOverlaps: Overlap[] = teamId
+  //    In demo mode, use pre-loaded mock overlaps instead of KV.
+  const allOverlaps: Overlap[] = isDemoMode
+    ? MOCK_OVERLAPS
+    : teamId
     ? (await getCachedOverlaps(teamId, today)) ?? []
     : []
 
@@ -134,27 +137,7 @@ export async function POST(): Promise<NextResponse> {
     )
   }
 
-  // 8. Generate audio via ElevenLabs
-  // Build the spoken text from the briefing content
-  const spokenText = [
-    content.summary,
-    ...content.achievements,
-    ...content.blockers.map((b) => b.description ?? b.title),
-    ...content.pending.map((p) => p.title),
-  ].join(' ')
-
-  let audioUrl: string
-  try {
-    audioUrl = await generateAudio(spokenText, userId, today)
-  } catch (error) {
-    console.error('[API] generateAudio failed:', error)
-    return NextResponse.json(
-      { error: 'Failed to generate audio' },
-      { status: 500 }
-    )
-  }
-
-  // 9. Build DailyBriefing object with relevantOverlaps populated
+  // 8. Build DailyBriefing object — audio is not generated yet (on-demand)
   const briefing: DailyBriefing = {
     id: `${userId}-${today}`,
     userId,
@@ -162,14 +145,14 @@ export async function POST(): Promise<NextResponse> {
     status: 'ready',
     sources,
     content,
-    audioUrl,
+    audioUrl: null,
     relevantOverlaps,
     generatedAt: new Date().toISOString(),
   }
 
-  // 10. Cache the briefing
+  // 9. Cache the briefing (without audio)
   await cacheBriefing(briefing)
 
-  // 11. Return briefing
+  // 10. Return briefing
   return NextResponse.json(briefing)
 }

@@ -9,6 +9,11 @@ interface TeamOnboardingPageProps {
 export default async function TeamOnboardingPage({
   searchParams,
 }: TeamOnboardingPageProps): Promise<React.ReactElement> {
+  // In demo mode, skip team setup entirely — mock team is pre-loaded
+  if (process.env.DEMO_MODE === 'true') {
+    redirect('/dashboard')
+  }
+
   const session = await auth()
 
   if (!session) {

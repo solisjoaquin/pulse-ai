@@ -1,55 +1,70 @@
-# Pulse — Data Sources Steering
-
+# Pulse — Data Sources Steering v2
+ 
 ## Core Principle
 Data sources are the foundation of the briefing. Each source is
-independent — one failing must never block the others. The briefing
-should always generate, even if every source returns null.
-
+independent — one failing must never block the others. Team activity
+aggregation follows the same principle: one member failing must never
+block the rest of the team's data from being processed.
+ 
+---
+ 
 ## The Source Contract
-
-Every source function in `/lib/sources/` MUST follow this contract:
-
+ 
+Every function in `/lib/sources/` and `/lib/team/` MUST follow this contract:
+ 
 ```typescript
-// Signature pattern — all sources follow this shape
+// Personal source — returns typed data or null on any error
 async function fetchXxxActivity(token: string): Promise<XxxActivity | null>
-
+ 
+// Team aggregation — returns array (may be partial) never throws
+async function fetchTeamActivity(members: TeamMember[]): Promise<MemberActivity[]>
+ 
 // Rules:
-// 1. Never throw — catch all errors internally and return null
-// 2. Always log the error before returning null
+// 1. Never throw — catch all errors internally
+// 2. Log the error before returning null or empty
 // 3. Return the full typed object or null — no partial returns
-// 4. All fetches have a timeout of 10 seconds maximum
+// 4. All fetches timeout after 10 seconds maximum
+// 5. Use Promise.allSettled for all parallel fetches
 ```
-
-## Parallel Fetching
-
-All sources MUST be fetched in parallel using `Promise.allSettled`.
-Never fetch sources sequentially — it wastes time.
-
+ 
+---
+ 
+## Parallel Fetching — Personal Sources
+ 
 ```typescript
-// Correct pattern in /api/briefing/generate
 const [githubResult, googleResult, jiraResult] = await Promise.allSettled([
   fetchGitHubActivity(session.githubToken),
   fetchGoogleActivity(session.googleToken),
   fetchJiraActivity(session.jiraToken, session.jiraDomain),
 ])
-
+ 
 const sources = {
   github: githubResult.status === 'fulfilled' ? githubResult.value : null,
   google: googleResult.status === 'fulfilled' ? googleResult.value : null,
   jira:   jiraResult.status === 'fulfilled'   ? jiraResult.value   : null,
 }
 ```
-
+ 
+## Parallel Fetching — Team Activity
+ 
+```typescript
+// In lib/team/aggregate.ts
+const results = await Promise.allSettled(
+  members.map(member => fetchMemberActivity(member))
+)
+ 
+const activities: MemberActivity[] = results
+  .filter(r => r.status === 'fulfilled' && r.value !== null)
+  .map(r => (r as PromiseFulfilledResult<MemberActivity>).value)
+```
+ 
+---
+ 
 ## GitHub Source
-
-### API Base URL
-`https://api.github.com`
-
-### Auth header
-`Authorization: Bearer {token}`
-`X-GitHub-Api-Version: 2022-11-28`
-
-### Endpoints to use
+ 
+**Base URL:** `https://api.github.com`
+**Auth:** `Authorization: Bearer {token}` + `X-GitHub-Api-Version: 2022-11-28`
+ 
 | Data | Endpoint |
 |---|---|
 | Commits (last 24h) | `GET /search/commits?q=author:{username}+committer-date:>{yesterday}` |
@@ -57,123 +72,310 @@ const sources = {
 | Pending reviews | `GET /search/issues?q=review-requested:{username}+type:pr+state:open` |
 | Closed issues | `GET /search/issues?q=assignee:{username}+type:issue+state:closed+closed:>{yesterday}` |
 | Merged PRs | `GET /search/issues?q=author:{username}+type:pr+is:merged+merged:>{yesterday}` |
-
-### Time window
-Always use "last 24 hours" relative to the moment of generation.
-Compute `yesterday` as: `new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()`
-
-### Rate limits
-GitHub REST API allows 5000 requests/hour for authenticated users.
-Each briefing generation uses ~5 requests. No rate limit concerns for MVP.
-
+| Modified files | Extract from commit detail: `GET /repos/{owner}/{repo}/commits/{sha}` |
+ 
+**Time window:** last 24 hours
+`const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()`
+ 
+**Important:** Store `modifiedFiles` as unique directory prefixes, not full paths.
+`src/lib/auth/session.ts` → store as `src/lib/auth/`
+This is what overlap detection uses to compare across members.
+ 
+---
+ 
 ## Google Calendar Source
-
-### API Base URL
-`https://www.googleapis.com/calendar/v3`
-
-### Auth header
-`Authorization: Bearer {token}`
-
-### Endpoint to use
-`GET /calendars/primary/events`
-
-### Query parameters
+ 
+**Base URL:** `https://www.googleapis.com/calendar/v3`
+**Auth:** `Authorization: Bearer {token}`
+**Endpoint:** `GET /calendars/primary/events`
+ 
 ```
-timeMin: start of today in ISO 8601 (midnight in user's timezone)
-timeMax: end of today in ISO 8601 (23:59:59 in user's timezone)
+timeMin: start of today midnight (user's timezone)
+timeMax: end of today 23:59:59 (user's timezone)
 singleEvents: true
 orderBy: startTime
 maxResults: 20
 ```
-
-### Timezone handling
-Always use the user's local timezone for timeMin/timeMax.
-Read timezone from the Google Calendar settings endpoint on first auth:
-`GET /users/me/settings/timezone`
-Store it in the session alongside the token.
-
-### What to extract per event
-- `summary` (title)
-- `start.dateTime` and `end.dateTime`
-- `attendees.length` (count only, not individual names for privacy)
-- `hangoutLink` (if present, it's a video call)
-
+ 
+Extract per event: `summary`, `start.dateTime`, `end.dateTime`,
+`attendees.length`, `hangoutLink` presence.
+ 
+---
+ 
 ## Jira Source
-
-### API Base URL
-`https://{domain}.atlassian.net/rest/api/3`
-
-### Auth
-Jira uses Basic Auth with API token:
-`Authorization: Basic base64("{email}:{apiToken}")`
-
-### JQL queries to use
+ 
+**Base URL:** `https://{domain}.atlassian.net/rest/api/3`
+**Auth:** Basic — `base64("{email}:{apiToken}")`
+ 
 | Data | JQL |
 |---|---|
-| In progress tickets | `assignee = currentUser() AND status = "In Progress"` |
+| In progress | `assignee = currentUser() AND status = "In Progress"` |
 | Moved yesterday | `assignee = currentUser() AND updated >= -1d` |
 | Blockers | `sprint in openSprints() AND labels = "blocker" AND assignee = currentUser()` |
-
-### MVP note
-Jira integration is optional for MVP. If `session.jiraToken` is null,
-skip the fetch entirely and pass `null` to the briefing pipeline.
-The UI shows a yellow dot for Jira in SourceStatus component.
-
-## Demo Mode Data
-
-When `DEMO_MODE=true`, all source functions return this mock data
-instead of making real API calls.
-
-### Mock GitHub data
+ 
+Optional for MVP — if `session.jiraToken` is null, skip entirely.
+ 
+---
+ 
+## Overlap Detection — `lib/team/overlaps.ts`
+ 
+Two passes. Run sequentially, structural first.
+ 
+### Pass 1 — Structural (no AI)
+ 
 ```typescript
-{
-  commits: [
-    { sha: 'abc1234', message: 'Fix authentication bug in login flow', repo: 'pulse-app' },
-    { sha: 'def5678', message: 'Add ElevenLabs TTS integration', repo: 'pulse-app' },
-    { sha: 'ghi9012', message: 'Update briefing prompt for voice output', repo: 'pulse-app' },
-  ],
-  openPRs: [
-    { number: 42, title: 'Add Google Calendar integration', repo: 'pulse-app', daysOpen: 2 },
-    { number: 38, title: 'Refactor data source pipeline', repo: 'pulse-app', daysOpen: 5 },
-  ],
-  pendingReviews: [
-    { number: 51, title: 'Dashboard mobile layout fix', repo: 'pulse-app', author: 'maria' },
-  ],
-  closedIssues: [
-    { number: 29, title: 'OAuth token not persisting on refresh', repo: 'pulse-app' },
-  ],
-  mergedPRs: [
-    { number: 40, title: 'Setup Vercel KV cache layer', repo: 'pulse-app' },
-  ],
+// CONFLICT: two members have modifiedFiles with the same directory prefix
+//           AND both have open PRs
+function detectStructuralOverlaps(activities: MemberActivity[]): Overlap[]
+ 
+// For each pair of members:
+// 1. Find intersection of touchedPaths
+// 2. If intersection is non-empty AND both have openPRs.length > 0 → CONFLICT
+// 3. If same repo in touchedRepos but no path overlap → AWARENESS
+```
+ 
+### Pass 2 — Semantic (Gemini)
+ 
+Send `focusSummary` strings to Gemini to detect intent overlap.
+Only run if there are 2+ members with activity.
+ 
+```typescript
+// In lib/ai/analyzeOverlaps.ts
+// Input: MemberActivity[] with focusSummary populated
+// Output: Overlap[] with type 'synergy' | 'awareness'
+// Uses gemini-2.5-flash with JSON output
+```
+ 
+Gemini prompt for overlap analysis — always use this exact structure:
+ 
+```
+You are analyzing work summaries from a software development team.
+Identify pairs of teammates working on semantically similar features
+or initiatives, even if in different repos or with different ticket numbers.
+ 
+Be conservative — only flag genuine overlaps, not coincidental shared words.
+Classify as "synergy" when there is clear opportunity to collaborate or
+share learnings. Classify as "awareness" when the similarity is loose.
+ 
+Return ONLY valid JSON, no markdown, no backticks.
+Format: { "overlaps": [{ "memberIds": ["id1", "id2"], "reason": "string", "type": "synergy" | "awareness" }] }
+ 
+If no meaningful overlaps are found, return: { "overlaps": [] }
+ 
+Member summaries:
+{SUMMARIES}
+```
+ 
+---
+ 
+## Mock Data — `lib/mock/data.ts`
+ 
+Used when `DEMO_MODE=true`. Covers the authenticated user plus
+three teammates, one conflict, one synergy, one awareness overlap.
+ 
+### Mock: authenticated user (John D.)
+ 
+```typescript
+export const mockUserActivity: MemberActivity = {
+  userId: 'user-jd',
+  date: new Date().toISOString().split('T')[0],
+  focusSummary: 'Auth module token refresh fix and KV cache layer implementation.',
+  touchedRepos: ['pulse-app'],
+  touchedPaths: ['src/lib/auth/', 'src/lib/cache/'],
+  touchedEpics: ['AUTH-2024', 'PERF-89'],
+  github: {
+    commits: [
+      { sha: 'abc1234', message: 'Fix token refresh on session expiry', repo: 'pulse-app' },
+      { sha: 'def5678', message: 'Implement Vercel KV cache layer', repo: 'pulse-app' },
+      { sha: 'ghi9012', message: 'Add cache TTL configuration', repo: 'pulse-app' },
+    ],
+    openPRs: [
+      { number: 42, title: 'Token refresh fix for expired sessions', repo: 'pulse-app', daysOpen: 1 },
+      { number: 38, title: 'Refactor data source pipeline', repo: 'pulse-app', daysOpen: 5 },
+    ],
+    pendingReviews: [
+      { number: 51, title: 'Dashboard mobile layout fix', repo: 'pulse-app', author: 'lucia' },
+    ],
+    closedIssues: [
+      { number: 29, title: 'OAuth token not persisting on refresh', repo: 'pulse-app' },
+    ],
+    mergedPRs: [
+      { number: 40, title: 'Setup Vercel KV cache layer', repo: 'pulse-app' },
+    ],
+    modifiedFiles: ['src/lib/auth/session.ts', 'src/lib/auth/token.ts', 'src/lib/cache/briefing.ts'],
+  },
+  google: {
+    events: [
+      { title: 'Daily Standup', start: '09:00', end: '09:30', attendees: 5, isVideo: true },
+      { title: 'Product Review', start: '11:00', end: '12:00', attendees: 8, isVideo: true },
+      { title: '1:1 with Sarah', start: '15:00', end: '15:30', attendees: 2, isVideo: false },
+      { title: 'Sprint Planning', start: '16:00', end: '17:00', attendees: 6, isVideo: true },
+    ],
+    totalMeetingMinutes: 150,
+  },
+  jira: {
+    sprintName: 'Sprint 12 — Voice Integration',
+    inProgress: [
+      { key: 'PULSE-84', title: 'ElevenLabs Conversational AI session', priority: 'high' },
+      { key: 'PULSE-79', title: 'Briefing audio player component', priority: 'medium' },
+    ],
+    movedYesterday: [
+      { key: 'PULSE-71', title: 'NextAuth GitHub OAuth setup', status: 'Done' },
+    ],
+    blockers: [
+      { key: 'PULSE-82', title: 'ElevenLabs voice ID not confirmed — blocking TTS', priority: 'high' },
+    ],
+  },
 }
 ```
-
-### Mock Google data
+ 
+### Mock: teammate Ana M.
+ 
 ```typescript
-{
-  events: [
-    { title: 'Daily Standup', start: '09:00', end: '09:30', attendees: 5, isVideo: true },
-    { title: 'Product Review', start: '11:00', end: '12:00', attendees: 8, isVideo: true },
-    { title: '1:1 with Sarah', start: '15:00', end: '15:30', attendees: 2, isVideo: false },
-    { title: 'Sprint Planning', start: '16:00', end: '17:00', attendees: 6, isVideo: true },
-  ],
-  totalMeetingMinutes: 150,
+export const mockAnaMActivity: MemberActivity = {
+  userId: 'user-am',
+  date: new Date().toISOString().split('T')[0],
+  focusSummary: 'Auth module session handling refactor and login flow improvements.',
+  touchedRepos: ['pulse-app'],
+  touchedPaths: ['src/lib/auth/', 'src/components/auth/'],
+  touchedEpics: ['AUTH-2024'],
+  github: {
+    commits: [
+      { sha: 'jkl3456', message: 'Refactor session handler to use new token model', repo: 'pulse-app' },
+      { sha: 'mno7890', message: 'Add session expiry UI feedback', repo: 'pulse-app' },
+    ],
+    openPRs: [
+      { number: 51, title: 'Session handling refactor', repo: 'pulse-app', daysOpen: 2 },
+    ],
+    pendingReviews: [],
+    closedIssues: [],
+    mergedPRs: [],
+    modifiedFiles: ['src/lib/auth/session.ts', 'src/components/auth/LoginForm.tsx'],
+  },
+  google: {
+    events: [
+      { title: 'Daily Standup', start: '09:00', end: '09:30', attendees: 5, isVideo: true },
+      { title: 'Auth Design Review', start: '14:00', end: '14:30', attendees: 3, isVideo: true },
+    ],
+    totalMeetingMinutes: 60,
+  },
+  jira: null,
 }
 ```
-
-### Mock Jira data
+ 
+### Mock: teammate Marcos R.
+ 
 ```typescript
-{
-  sprintName: 'Sprint 12 — Voice Integration',
-  inProgress: [
-    { key: 'PULSE-84', title: 'Implement ElevenLabs Conversational AI session', priority: 'high' },
-    { key: 'PULSE-79', title: 'Build briefing audio player component', priority: 'medium' },
-  ],
-  movedYesterday: [
-    { key: 'PULSE-71', title: 'Set up NextAuth with GitHub OAuth', status: 'Done' },
-  ],
-  blockers: [
-    { key: 'PULSE-82', title: 'ElevenLabs voice ID not confirmed — blocking TTS', priority: 'high' },
-  ],
+export const mockMarcosRActivity: MemberActivity = {
+  userId: 'user-mr',
+  date: new Date().toISOString().split('T')[0],
+  focusSummary: 'Redis caching layer for notifications service and background job queue.',
+  touchedRepos: ['notifications-svc', 'pulse-infra'],
+  touchedPaths: ['src/cache/', 'src/jobs/'],
+  touchedEpics: ['INFRA-12'],
+  github: {
+    commits: [
+      { sha: 'pqr1234', message: 'Add Redis cache for notification deduplication', repo: 'notifications-svc' },
+      { sha: 'stu5678', message: 'Configure cache TTL per notification type', repo: 'notifications-svc' },
+    ],
+    openPRs: [
+      { number: 18, title: 'Redis cache for notification deduplication', repo: 'notifications-svc', daysOpen: 1 },
+    ],
+    pendingReviews: [],
+    closedIssues: [],
+    mergedPRs: [],
+    modifiedFiles: ['src/cache/redis.ts', 'src/jobs/notification-worker.ts'],
+  },
+  google: {
+    events: [
+      { title: 'Daily Standup', start: '09:00', end: '09:30', attendees: 5, isVideo: true },
+      { title: 'Infra Sync', start: '10:00', end: '10:30', attendees: 4, isVideo: true },
+    ],
+    totalMeetingMinutes: 60,
+  },
+  jira: null,
 }
+```
+ 
+### Mock: teammate Lucía V.
+ 
+```typescript
+export const mockLuciaVActivity: MemberActivity = {
+  userId: 'user-lv',
+  date: new Date().toISOString().split('T')[0],
+  focusSummary: 'Dashboard UI components and mobile responsive layout improvements.',
+  touchedRepos: ['pulse-app'],
+  touchedPaths: ['src/components/dashboard/', 'src/components/ui/'],
+  touchedEpics: ['UI-45'],
+  github: {
+    commits: [
+      { sha: 'vwx9012', message: 'Mobile responsive fixes for BriefingPlayer', repo: 'pulse-app' },
+      { sha: 'yza3456', message: 'Add touch targets to player controls', repo: 'pulse-app' },
+    ],
+    openPRs: [
+      { number: 55, title: 'Mobile responsive dashboard layout', repo: 'pulse-app', daysOpen: 1 },
+    ],
+    pendingReviews: [
+      { number: 42, title: 'Token refresh fix for expired sessions', repo: 'pulse-app', author: 'user-jd' },
+    ],
+    closedIssues: [],
+    mergedPRs: [],
+    modifiedFiles: ['src/components/dashboard/BriefingPlayer.tsx', 'src/components/ui/Button.tsx'],
+  },
+  google: {
+    events: [
+      { title: 'Daily Standup', start: '09:00', end: '09:30', attendees: 5, isVideo: true },
+    ],
+    totalMeetingMinutes: 30,
+  },
+  jira: null,
+}
+```
+ 
+### Mock: pre-computed overlaps
+ 
+```typescript
+export const mockOverlaps: Overlap[] = [
+  {
+    id: 'overlap-001',
+    type: 'conflict',
+    memberIds: ['user-jd', 'user-am'],
+    reason: 'Both modifying src/lib/auth/ with open PRs',
+    detail: 'John has PR #42 touching token.ts and session.ts. Ana has PR #51 touching session.ts. These will conflict on merge.',
+    repos: ['pulse-app'],
+    paths: ['src/lib/auth/'],
+    detectedAt: new Date().toISOString(),
+  },
+  {
+    id: 'overlap-002',
+    type: 'synergy',
+    memberIds: ['user-jd', 'user-mr'],
+    reason: 'Both building caching layers for different services',
+    detail: 'John built KV cache for briefings. Marcos is building Redis cache for notifications. Shared patterns around TTL and cache invalidation.',
+    repos: ['pulse-app', 'notifications-svc'],
+    paths: [],
+    detectedAt: new Date().toISOString(),
+  },
+  {
+    id: 'overlap-003',
+    type: 'awareness',
+    memberIds: ['user-jd', 'user-lv'],
+    reason: 'Both active in pulse-app, different areas',
+    detail: 'Lucía is working on dashboard UI components. No file overlap with John\'s work.',
+    repos: ['pulse-app'],
+    paths: [],
+    detectedAt: new Date().toISOString(),
+  },
+]
+```
+ 
+### Mock: full team array
+ 
+```typescript
+export const mockTeamMembers: TeamMember[] = [
+  { userId: 'user-jd', name: 'John D.',   avatarUrl: '', timezone: 'America/Argentina/Cordoba', connections: { github: true, google: true, jira: true } },
+  { userId: 'user-am', name: 'Ana M.',    avatarUrl: '', timezone: 'America/Argentina/Cordoba', connections: { github: true, google: true, jira: false } },
+  { userId: 'user-mr', name: 'Marcos R.', avatarUrl: '', timezone: 'America/Argentina/Cordoba', connections: { github: true, google: true, jira: false } },
+  { userId: 'user-lv', name: 'Lucía V.',  avatarUrl: '', timezone: 'America/Argentina/Cordoba', connections: { github: true, google: true, jira: false } },
+]
 ```

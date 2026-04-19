@@ -17,7 +17,7 @@ The system is a web application built on Next.js 14. All third-party API calls (
 - **Briefing_Generator**: The server-side component responsible for orchestrating data aggregation, Gemini text generation, and ElevenLabs audio synthesis.
 - **Data_Aggregator**: The server-side component that fetches activity from connected data sources (GitHub, Google Calendar, Jira) for one or more team members.
 - **Auth_Manager**: The component responsible for OAuth 2.0 flows, token storage, and token refresh.
-- **Scheduler**: The component responsible for triggering briefing pre-generation at the user's configured time.
+- **Scheduler**: The component responsible for triggering briefing manual generation at the user's configured time.
 - **Audio_Player**: The client-side UI component that plays the MP3 briefing and displays the transcript.
 - **Voice_Assistant**: The ElevenLabs Conversational AI session loaded with today's briefing context and full team activity data.
 - **Transcript**: The full text of the briefing, displayed when the user activates the transcript toggle.

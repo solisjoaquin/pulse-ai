@@ -352,32 +352,34 @@ export async function cacheBriefing(
 
 - [x] TASK-014 — POST /api/briefing/generate
 **Refs:** REQ-004, REQ-005, REQ-006, REQ-007, REQ-008,
-         REQ-009, REQ-010, REQ-018, REQ-019
+         REQ-009, REQ-018, REQ-019
 **File:** `app/api/briefing/generate/route.ts`
 
 **Description:**
-Orchestrates the full briefing pipeline:
+Orchestrates the briefing text pipeline (audio is generated on-demand via TASK-044):
 
 ```
 1. Authenticate request (valid session required)
 2. Check cache — return existing briefing if found
-3. Fetch all sources in parallel with Promise.allSettled
-4. Call synthesizeBriefing with aggregated data
-5. Call generateAudio with briefing text
-6. Build DailyBriefing object with status 'ready'
-7. Cache the briefing
-8. Return briefing as JSON
+3. Fetch user's MemberActivity from KV (teamId lookup)
+4. Fetch team Overlap[] from KV, filter to this user
+5. Convert relevant Overlaps to TeamAlert[] for the prompt
+6. Fetch all sources in parallel with Promise.allSettled
+7. Call synthesizeBriefing with aggregated data + TeamAlert[]
+8. Build DailyBriefing object with audioUrl: null
+9. Cache the briefing
+10. Return briefing as JSON
 ```
 
 **Error handling:**
-- If gemini fails → return 500 with error message
-- If ElevenLabs fails → return 500 with error message
+- If Gemini fails → return 500 with error message
 - If a data source fails → continue with null for that source
 
 **Definition of done:**
-- Returns complete `DailyBriefing` with audioUrl
+- Returns complete `DailyBriefing` with `audioUrl: null`
 - Cached result returned on second call (no reprocessing)
 - All source failures handled gracefully
+- Audio generation is NOT triggered here (see TASK-044)
 
 ---
 
@@ -436,21 +438,45 @@ Be concise. Speak in second person.
 **File:** `app/dashboard/page.tsx`
 
 **Description:**
-Build the main dashboard page with three zones:
-1. **Header:** Pulse logo, date, connected sources status
-2. **Player zone:** BriefingPlayer component (center)
-3. **Assistant zone:** AssistantButton (bottom)
+Main dashboard page with header nav, briefing player zone, assistant zone, stats, and team overlaps.
 
 **On load:**
 - Call `GET /api/briefing/status`
-- If `pending`: show "Generating your briefing..." state
-  and call `POST /api/briefing/generate`
-- If `ready`: render player immediately
+- If `ready` with cached `audioUrl`: restore player immediately
+- If `ready` without `audioUrl`: show briefing text + "Generate audio briefing" button
+- If `pending`: show generating animation (3 steps: GitHub → Calendar → Gemini), then call `POST /api/briefing/generate`
+
+**Generating animation steps (text only — no audio):**
+1. GitHub — Fetching commits, PRs, and reviews
+2. Google Calendar — Loading today's schedule
+3. Synthesizing with Gemini — Writing your briefing script
+
+**Audio generation (on-demand):**
+- After text briefing loads, the player slot shows the briefing summary text and a "Generate audio briefing" button
+- Clicking the button calls `POST /api/briefing/audio` (TASK-044)
+- While generating: spinner with "Generating audio with ElevenLabs..." label
+- On success: swap in the full `BriefingPlayer` component
+- On error: show error message and "Retry audio generation" button
+
+**Header:**
+- Pulse logo (dot + wordmark)
+- Nav tabs: "My briefing" (active) / "Team" linking to `/dashboard/team`
+- User avatar with initials
+
+**Right column:**
+- Ask Pulse card with `AssistantButton`
+- Today at a glance card: Meetings, Open PRs, Team conflicts, Synergies, Merged yesterday
+
+**Below grid:**
+- Team overlaps section (only shown when `relevantOverlaps.length > 0`)
+- Each overlap rendered as an inline colored card (conflict = red, synergy = green, awareness = neutral)
 
 **Definition of done:**
-- Page loads and fetches briefing automatically
-- Loading state shown during generation
-- All three zones render correctly
+- Page loads without triggering any AI or ElevenLabs API calls
+- Briefing text renders immediately after Gemini step completes
+- Audio generation is explicitly user-triggered
+- Error state shown if generation fails, with a retry button
+- Cached audio URL restored on page reload without re-generating
 
 ---
 
@@ -870,16 +896,47 @@ Update the briefing generation pipeline to include team overlap data.
 5. Convert relevant Overlaps to TeamAlert[] for the briefing prompt
 6. Fetch all sources in parallel with Promise.allSettled
 7. Call synthesizeBriefing with activity data + TeamAlert[]
-8. Call generateAudio with briefing text
-9. Build DailyBriefing with relevantOverlaps populated
-10. Cache the briefing
-11. Return briefing as JSON
+8. Build DailyBriefing with relevantOverlaps populated, audioUrl: null
+9. Cache the briefing
+10. Return briefing as JSON
 ```
 
 **Definition of done:**
-- Returns `DailyBriefing` with `relevantOverlaps` populated
+- Returns `DailyBriefing` with `relevantOverlaps` populated and `audioUrl: null`
 - Team alerts appear in the briefing content
 - Existing caching behavior preserved
+- Audio generation removed from this route (moved to TASK-044)
+
+---
+
+- [x] TASK-044 — POST /api/briefing/audio
+**Refs:** REQ-009, REQ-010
+**File:** `app/api/briefing/audio/route.ts`
+
+**Description:**
+On-demand audio generation endpoint. Decoupled from briefing text generation so the dashboard loads immediately without waiting for ElevenLabs.
+
+**Pipeline:**
+```
+1. Authenticate request (valid session required)
+2. Load today's cached DailyBriefing — return 404 if not found
+3. If briefing.audioUrl already exists — return it immediately (idempotent)
+4. Build spoken text from briefing content:
+   summary + achievements + blocker descriptions + pending titles
+5. Call generateAudio(spokenText, userId, today) via lib/voice/tts.ts
+6. Update the cached briefing with the new audioUrl
+7. Return { audioUrl }
+```
+
+**Error handling:**
+- If no briefing in cache → 404 with descriptive message
+- If briefing has no content → 422
+- If ElevenLabs fails → 500 with error message
+
+**Definition of done:**
+- Returns `{ audioUrl: string }` on success
+- Calling the endpoint a second time returns the cached URL without re-generating
+- Briefing cache is updated so page reload restores the audio player automatically
 
 ---
 

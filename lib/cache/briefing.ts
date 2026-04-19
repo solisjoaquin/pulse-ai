@@ -6,6 +6,11 @@ function buildCacheKey(userId: string, date: string): string {
   return `briefing:${userId}:${date}`
 }
 
+// ─── In-process memory fallback (used when KV is not configured) ──────────────
+// Scoped to the server process — survives across requests in the same process,
+// which is sufficient for local dev and demo mode.
+const memoryCache = new Map<string, DailyBriefing>()
+
 // Lazily import kv only when KV credentials are present.
 // This prevents @vercel/kv from throwing at module load time
 // when KV_REST_API_URL / KV_REST_API_TOKEN are not configured (e.g. local dev).
@@ -27,7 +32,10 @@ export async function getCachedBriefing(
 ): Promise<DailyBriefing | null> {
   try {
     const kv = await getKv()
-    if (!kv) return null
+    if (!kv) {
+      // Fall back to in-process memory cache
+      return memoryCache.get(buildCacheKey(userId, date)) ?? null
+    }
 
     const key = buildCacheKey(userId, date)
     const cached = await kv.get<DailyBriefing>(key)
@@ -42,7 +50,8 @@ export async function cacheBriefing(briefing: DailyBriefing): Promise<void> {
   try {
     const kv = await getKv()
     if (!kv) {
-      console.warn('[Cache] KV not configured — skipping cache write')
+      // Fall back to in-process memory cache
+      memoryCache.set(buildCacheKey(briefing.userId, briefing.date), briefing)
       return
     }
 

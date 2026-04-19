@@ -13,34 +13,27 @@ const SKELETON_COUNT = 6
 function MemberCardSkeleton(): React.ReactElement {
   return (
     <div
-      className="flex w-full animate-pulse flex-col gap-3 rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
+      style={{
+        background: 'var(--color-background-primary)',
+        border: '0.5px solid var(--color-border-tertiary)',
+        borderRadius: '12px',
+        padding: '1rem',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '12px',
+      }}
       aria-hidden="true"
     >
-      {/* Header: avatar + name + dots */}
-      <div className="flex items-center gap-3">
-        {/* Avatar */}
-        <div className="h-10 w-10 shrink-0 rounded-full bg-gray-200" />
-
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center justify-between gap-2">
-            {/* Name */}
-            <div className="h-4 w-32 rounded bg-gray-200" />
-            {/* Connection dots */}
-            <div className="flex items-center gap-1.5">
-              <div className="h-2 w-2 rounded-full bg-gray-200" />
-              <div className="h-2 w-2 rounded-full bg-gray-200" />
-              <div className="h-2 w-2 rounded-full bg-gray-200" />
-            </div>
-          </div>
-          {/* Timestamp */}
-          <div className="mt-1.5 h-3 w-20 rounded bg-gray-200" />
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'var(--color-background-tertiary)', flexShrink: 0 }} />
+        <div style={{ flex: 1 }}>
+          <div style={{ height: '12px', width: '80px', borderRadius: '4px', background: 'var(--color-background-tertiary)', marginBottom: '6px' }} />
+          <div style={{ height: '10px', width: '40px', borderRadius: '4px', background: 'var(--color-background-tertiary)' }} />
         </div>
       </div>
-
-      {/* Focus summary lines */}
-      <div className="flex flex-col gap-1.5">
-        <div className="h-3.5 w-full rounded bg-gray-200" />
-        <div className="h-3.5 w-4/5 rounded bg-gray-200" />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+        <div style={{ height: '11px', width: '100%', borderRadius: '4px', background: 'var(--color-background-tertiary)' }} />
+        <div style={{ height: '11px', width: '75%', borderRadius: '4px', background: 'var(--color-background-tertiary)' }} />
       </div>
     </div>
   )
@@ -82,7 +75,7 @@ export default function TeamFeed({
   if (isLoading) {
     return (
       <section aria-label="Team activity feed loading" aria-busy="true">
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
           {Array.from({ length: SKELETON_COUNT }, (_, i) => (
             <MemberCardSkeleton key={i} />
           ))}
@@ -94,8 +87,18 @@ export default function TeamFeed({
   if (members.length === 0) {
     return (
       <section aria-label="Team activity feed">
-        <div className="flex items-center justify-center rounded-xl border border-dashed border-gray-300 bg-gray-50 py-16">
-          <p className="text-sm text-gray-500">No team members yet</p>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderRadius: '12px',
+            border: '1px dashed var(--color-border-tertiary)',
+            background: 'var(--color-background-secondary)',
+            padding: '4rem 1rem',
+          }}
+        >
+          <p style={{ fontSize: '13px', color: 'var(--color-text-tertiary)' }}>No team members yet</p>
         </div>
       </section>
     )
@@ -105,7 +108,7 @@ export default function TeamFeed({
 
   return (
     <section aria-label="Team activity feed">
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
         {sorted.map(({ member, activity }) => (
           <MemberCard key={member.userId} member={member} activity={activity} />
         ))}

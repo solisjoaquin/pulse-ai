@@ -84,13 +84,18 @@ export default function BriefingPlayer({ audioUrl, transcript, briefing }: Brief
     ? `${Math.floor(duration / 60)} min ${Math.floor(duration % 60)} sec`
     : '—'
 
+  function cycleSpeed(): void {
+    const next: 1 | 1.5 | 2 = speed === 1 ? 1.5 : speed === 1.5 ? 2 : 1
+    handleSpeedChange(next)
+  }
+
   return (
     <div
       style={{
         background: 'var(--color-background-primary)',
         border: '0.5px solid var(--color-border-tertiary)',
-        borderRadius: 'var(--border-radius-lg)',
-        padding: '1.75rem',
+        borderRadius: '12px',
+        padding: '1.25rem',
       }}
     >
       <audio ref={audioRef} src={audioUrl} preload="metadata" />
@@ -112,17 +117,17 @@ export default function BriefingPlayer({ audioUrl, transcript, briefing }: Brief
       {/* Summary */}
       <p
         style={{
-          fontSize: '16px',
+          fontSize: '14px',
           color: 'var(--color-text-primary)',
           lineHeight: 1.6,
-          marginBottom: '1.5rem',
+          marginBottom: '1rem',
         }}
       >
         {transcript}
       </p>
 
       {/* Progress */}
-      <div style={{ marginBottom: '1.25rem' }}>
+      <div style={{ marginBottom: '6px' }}>
         <div
           style={{
             height: '3px',
@@ -159,6 +164,7 @@ export default function BriefingPlayer({ audioUrl, transcript, briefing }: Brief
             justifyContent: 'space-between',
             fontSize: '11px',
             color: 'var(--color-text-tertiary)',
+            marginBottom: '1rem',
           }}
         >
           <span>{formatTime(currentTime)}</span>
@@ -244,30 +250,25 @@ export default function BriefingPlayer({ audioUrl, transcript, briefing }: Brief
           </svg>
         </button>
 
-        {/* Speed */}
-        <div role="group" aria-label="Playback speed" style={{ display: 'flex', gap: '4px', marginLeft: 'auto' }}>
-          {([1, 1.5, 2] as const).map((s) => (
-            <button
-              key={s}
-              type="button"
-              onClick={() => handleSpeedChange(s)}
-              aria-pressed={speed === s}
-              style={{
-                background: speed === s ? 'var(--color-background-tertiary)' : 'none',
-                border: '0.5px solid var(--color-border-tertiary)',
-                borderRadius: '100px',
-                padding: '4px 10px',
-                fontSize: '12px',
-                fontWeight: 500,
-                color: speed === s ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
-                cursor: 'pointer',
-                minHeight: '32px',
-              }}
-            >
-              {s}×
-            </button>
-          ))}
-        </div>
+        {/* Speed — single cycling button */}
+        <button
+          type="button"
+          onClick={cycleSpeed}
+          aria-label={`Playback speed: ${speed}×. Click to change.`}
+          style={{
+            background: 'var(--color-background-secondary)',
+            border: '0.5px solid var(--color-border-tertiary)',
+            borderRadius: '100px',
+            padding: '3px 10px',
+            fontSize: '12px',
+            fontWeight: 500,
+            color: 'var(--color-text-secondary)',
+            cursor: 'pointer',
+            marginLeft: 'auto',
+          }}
+        >
+          {speed}×
+        </button>
 
         {/* Transcript toggle */}
         <button

@@ -5,37 +5,25 @@ interface MemberCardProps {
   activity: MemberActivity | null
 }
 
-interface ConnectionDotsProps {
-  connections: TeamMember['connections']
-}
-
-function ConnectionDots({ connections }: ConnectionDotsProps): React.ReactElement {
-  const sources: { key: keyof TeamMember['connections']; label: string }[] = [
-    { key: 'github', label: 'GitHub' },
-    { key: 'google', label: 'Google' },
-    { key: 'jira', label: 'Jira' },
-  ]
-
-  return (
-    <div className="flex items-center gap-1.5" aria-label="Connection status">
-      {sources.map(({ key, label }) => (
-        <span
-          key={key}
-          title={connections[key] ? `${label}: connected` : `${label}: not connected`}
-          aria-label={connections[key] ? `${label} connected` : `${label} not connected`}
-          className={[
-            'inline-block h-2 w-2 rounded-full',
-            connections[key] ? 'bg-[#1D9E75]' : 'bg-gray-300',
-          ].join(' ')}
-        />
-      ))}
-    </div>
-  )
-}
-
 interface AvatarProps {
   name: string
   avatarUrl: string
+}
+
+// Deterministic color palette for avatars without images
+const AVATAR_COLORS: { bg: string; color: string }[] = [
+  { bg: '#EEEDFE', color: '#3C3489' },
+  { bg: '#FAEEDA', color: '#854F0B' },
+  { bg: '#FAECE7', color: '#993C1D' },
+  { bg: 'var(--color-background-info)', color: 'var(--color-text-info)' },
+]
+
+function getAvatarColor(name: string): { bg: string; color: string } {
+  let hash = 0
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length] ?? AVATAR_COLORS[0]!
 }
 
 function Avatar({ name, avatarUrl }: AvatarProps): React.ReactElement {
@@ -52,64 +40,102 @@ function Avatar({ name, avatarUrl }: AvatarProps): React.ReactElement {
       <img
         src={avatarUrl}
         alt={`${name}'s avatar`}
-        className="h-10 w-10 shrink-0 rounded-full object-cover"
-        width={40}
-        height={40}
+        style={{ width: '28px', height: '28px', borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
+        width={28}
+        height={28}
       />
     )
   }
 
+  const { bg, color } = getAvatarColor(name)
+
   return (
     <div
       aria-label={`${name}'s avatar`}
-      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gray-200 text-sm font-semibold text-gray-600"
+      style={{
+        width: '28px',
+        height: '28px',
+        borderRadius: '50%',
+        background: bg,
+        color,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: '11px',
+        fontWeight: 500,
+        flexShrink: 0,
+      }}
     >
       {initials}
     </div>
   )
 }
 
-function formatRelativeDate(dateStr: string): string {
-  const date = new Date(dateStr)
-  if (isNaN(date.getTime())) return ''
-
-  const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
-  const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
-  const diffDays = Math.floor(diffHours / 24)
-
-  if (diffHours < 1) return 'Updated just now'
-  if (diffHours < 24) return `Updated ${diffHours}h ago`
-  if (diffDays === 1) return 'Updated yesterday'
-  return `Updated ${diffDays} days ago`
-}
-
 export default function MemberCard({ member, activity }: MemberCardProps): React.ReactElement {
   const focusSummary = activity?.focusSummary ?? null
-  const lastUpdated = activity?.date ? formatRelativeDate(activity.date) : null
+  const repos = activity?.touchedRepos ?? []
+  const isActive = activity !== null
 
   return (
-    <article className="flex w-full flex-col gap-3 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-      {/* Header: avatar + name + connection dots */}
-      <div className="flex items-center gap-3">
+    <article
+      style={{
+        background: 'var(--color-background-primary)',
+        border: '0.5px solid var(--color-border-tertiary)',
+        borderRadius: '12px',
+        padding: '1rem',
+      }}
+    >
+      {/* Header: avatar + name + status */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
         <Avatar name={member.name} avatarUrl={member.avatarUrl} />
-
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center justify-between gap-2">
-            <span className="truncate font-semibold text-gray-900">{member.name}</span>
-            <ConnectionDots connections={member.connections} />
+        <div>
+          <p style={{ fontSize: '13px', fontWeight: 500, color: 'var(--color-text-primary)', marginBottom: '1px' }}>
+            {member.name}
+          </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+            <span
+              aria-hidden="true"
+              style={{
+                width: '6px',
+                height: '6px',
+                borderRadius: '50%',
+                background: isActive ? '#1D9E75' : 'var(--color-text-tertiary)',
+                display: 'inline-block',
+              }}
+            />
+            <span style={{ fontSize: '11px', color: 'var(--color-text-tertiary)' }}>
+              {isActive ? 'active' : 'no activity'}
+            </span>
           </div>
-
-          {lastUpdated && (
-            <p className="mt-0.5 text-xs text-gray-400">{lastUpdated}</p>
-          )}
         </div>
       </div>
 
       {/* Focus summary */}
-      <p className="text-sm leading-relaxed text-gray-600">
+      <p style={{ fontSize: '12px', color: 'var(--color-text-secondary)', lineHeight: 1.5, marginBottom: '8px' }}>
         {focusSummary ?? 'No recent activity'}
       </p>
+
+      {/* Repo pills */}
+      {repos.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+          {repos.map((repo) => (
+            <span
+              key={repo}
+              style={{
+                display: 'inline-block',
+                fontSize: '11px',
+                padding: '2px 8px',
+                background: 'var(--color-background-secondary)',
+                border: '0.5px solid var(--color-border-tertiary)',
+                borderRadius: '100px',
+                color: 'var(--color-text-secondary)',
+              }}
+            >
+              {repo}
+            </span>
+          ))}
+        </div>
+      )}
     </article>
   )
 }

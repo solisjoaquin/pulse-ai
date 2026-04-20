@@ -3,6 +3,7 @@ import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js'
 import { auth } from '@/auth'
 import { getCachedBriefing } from '@/lib/cache/briefing'
 import { getAllMemberActivity, getCachedOverlaps } from '@/lib/cache/team'
+import { MOCK_TEAM_MEMBERS, MOCK_ALL_ACTIVITIES, MOCK_OVERLAPS } from '@/lib/mock/data'
 import type { Team, TeamMember, MemberActivity, Overlap, DailyBriefing } from '@/types'
 
 // Read env vars at the top of the file
@@ -167,9 +168,11 @@ type SessionResponse = { signedUrl: string }
 type ErrorResponse = { error: string }
 
 export async function POST(): Promise<NextResponse<SessionResponse | ErrorResponse>> {
-  // 1. Auth check
+  // 1. Auth check — demo mode bypasses NextAuth session requirement
+  const isDemoMode = process.env.DEMO_MODE === 'true'
   const session = await auth()
-  if (!session?.user?.id) {
+
+  if (!isDemoMode && !session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -186,33 +189,38 @@ export async function POST(): Promise<NextResponse<SessionResponse | ErrorRespon
     )
   }
 
-  const userId = session.user.id
+  const userId: string = isDemoMode ? 'demo-user' : (session!.user!.id as string)
   const today = new Date().toISOString().split('T')[0] // YYYY-MM-DD
 
-  // 2. Load user briefing and team in parallel
-  const [briefing, team] = await Promise.all([
-    getCachedBriefing(userId, today),
-    findUserTeam(userId),
-  ])
+  // 2. Load user briefing and team context in parallel
+  const briefing = await getCachedBriefing(userId, today)
 
-  // 3. Load team activity, overlaps, and member profiles (requires teamId)
   let memberActivities: MemberActivity[] = []
   let overlaps: Overlap[] = []
   let memberProfiles = new Map<string, TeamMember>()
 
-  if (team) {
-    const [activities, cachedOverlaps, profiles] = await Promise.all([
-      getAllMemberActivity(team.id, today),
-      getCachedOverlaps(team.id, today),
-      getTeamMemberProfiles(team.id, team.memberIds),
-    ])
-
-    memberActivities = activities
-    overlaps = cachedOverlaps ?? []
-    memberProfiles = profiles
+  if (isDemoMode) {
+    // Use mock team data directly — no KV needed
+    memberActivities = MOCK_ALL_ACTIVITIES
+    overlaps = MOCK_OVERLAPS
+    for (const m of MOCK_TEAM_MEMBERS) {
+      memberProfiles.set(m.userId, m)
+    }
+  } else {
+    const team = await findUserTeam(userId)
+    if (team) {
+      const [activities, cachedOverlaps, profiles] = await Promise.all([
+        getAllMemberActivity(team.id, today),
+        getCachedOverlaps(team.id, today),
+        getTeamMemberProfiles(team.id, team.memberIds),
+      ])
+      memberActivities = activities
+      overlaps = cachedOverlaps ?? []
+      memberProfiles = profiles
+    }
   }
 
-  // 4. Build system prompt with all three context sections
+  // 3. Build system prompt with all three context sections
   const systemPrompt = buildSystemPrompt(
     briefing,
     memberActivities,
@@ -221,12 +229,12 @@ export async function POST(): Promise<NextResponse<SessionResponse | ErrorRespon
     overlaps
   )
 
-  // 5. Build first message from briefing summary
+  // 4. Build first message from briefing summary
   const firstMessage = briefing?.content?.summary
     ? `Good morning! ${briefing.content.summary} What would you like to know more about?`
     : 'Good morning! Your briefing is being prepared. How can I help you?'
 
-  // 6. Initialize ElevenLabs Conversational AI session
+  // 5. Initialize ElevenLabs Conversational AI session
   //    Use the @elevenlabs/elevenlabs-js client for auth configuration,
   //    then call the signed URL endpoint with conversation_config_override
   //    to inject the dynamic system prompt into this session.
